@@ -1,6 +1,8 @@
 'use client';
 
-import { Card, Col, Menu, Row } from 'antd';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { Button, Card, Col, Menu, Row, Space, Tag } from 'antd';
 import {
   AlertOutlined,
   ApiOutlined,
@@ -9,6 +11,7 @@ import {
   PartitionOutlined,
 } from '@ant-design/icons';
 import { AppShell, PageHeader } from '@lingprism/ui';
+import { fetchCurrentUser, logout, type AuthUser } from '@lingprism/graphql';
 
 const menuItems = [
   { key: 'repos', icon: <DatabaseOutlined />, label: '代码源管理' },
@@ -19,9 +22,32 @@ const menuItems = [
 ];
 
 export default function AdminHomePage() {
+  const router = useRouter();
+  const [user, setUser] = useState<AuthUser | null>(null);
+
+  useEffect(() => {
+    fetchCurrentUser()
+      .then((current) => {
+        if (!current) {
+          router.replace('/login');
+          return;
+        }
+        setUser(current);
+      })
+      .catch(() => router.replace('/login'));
+  }, [router]);
+
+  const handleLogout = () => {
+    logout();
+    router.replace('/login');
+  };
+
   return (
     <AppShell appTitle="管理后台" accentColor="#1677ff">
-      <PageHeader title="数据与知识治理" description="Batch 0 脚手架 — 管理后台空壳" />
+      <PageHeader
+        title="数据与知识治理"
+        description={user ? `已登录：${user.displayName}` : '加载中…'}
+      />
       <Row gutter={16}>
         <Col xs={24} md={6}>
           <Card>
@@ -29,7 +55,17 @@ export default function AdminHomePage() {
           </Card>
         </Col>
         <Col xs={24} md={18}>
-          <Card title="工作台">
+          <Card
+            title="工作台"
+            extra={
+              <Space>
+                {user ? <Tag color="blue">{user.role}</Tag> : null}
+                <Button size="small" onClick={handleLogout}>
+                  退出
+                </Button>
+              </Space>
+            }
+          >
             <p>请从左侧选择管理模块。业务功能将在 Phase 1 实现。</p>
           </Card>
         </Col>

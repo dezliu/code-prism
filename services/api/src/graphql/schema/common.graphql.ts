@@ -10,4 +10,8 @@ export const commonTypeDefs = /* GraphQL */ `
   type Query {
     health: HealthStatus!
   }
+
+  type Mutation {
+    _empty: String
+  }
 `;

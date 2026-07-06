@@ -15,18 +15,22 @@ dependencies = [
   "langchain-core>=0.3.0",
   "langchain-openai>=0.3.0",
   "qdrant-client>=1.12.0",
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.32.0",
 ]
 
 [project.optional-dependencies]
 dev = [
   "pytest>=8.3.0",
+  "httpx>=0.28.0",
 ]
 
 [project.scripts]
 lingprism-smoke-llm = "scripts.smoke_llm:main"
+lingprism-ai-http = "internal_http.server:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["workers", "chains", "infrastructure", "scripts"]
+packages = ["workers", "chains", "infrastructure", "scripts", "internal_http"]

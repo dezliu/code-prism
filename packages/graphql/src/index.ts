@@ -1,6 +1,13 @@
-/** GraphQL client & codegen — Batch 1 实现 */
-export const GRAPHQL_ENDPOINT =
-  process.env.NEXT_PUBLIC_GRAPHQL_URL ?? 'http://localhost:4000/graphql';
-
-export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:4000';
+/** GraphQL client & codegen — Batch 3 auth + SSE hooks */
+export { GRAPHQL_ENDPOINT, API_BASE_URL } from './constants';
+export { createApolloClient, resetApolloClient } from './apollo-client';
+export { LingPrismApolloProvider } from './apollo-provider';
+export { loginWithCredentials, fetchCurrentUser, logout } from './auth-api';
+export { useChatSSE } from './use-chat-sse';
+export type { AuthUser, LoginResponse } from '@lingprism/shared';
+export type {
+  ChatSSEEvent,
+  ChatSSEPhase,
+  ChatSSEStatus,
+  UseChatSSEReturn,
+} from './use-chat-sse';

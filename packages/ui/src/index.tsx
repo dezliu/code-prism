@@ -47,3 +47,5 @@ export function PageHeader({ title, description }: { title: string; description?
 }
 
 export { AppShell as default };
+export { LoginForm } from './LoginForm';
+export type { LoginFormProps, LoginFormValues } from './LoginForm';

@@ -1,4 +1,6 @@
-import 'dotenv/config';
+import { loadProjectEnv, resolveDatabaseUrl, resolveRedisUrl } from './infrastructure/config/env.js';
+
+loadProjectEnv();
 
 export interface ApiConfig {
   port: number;
@@ -7,8 +9,10 @@ export interface ApiConfig {
   databaseUrl: string;
   redisUrl: string;
   coreGrpcAddr: string;
+  aiWorkerUrl: string;
   jwtSecret: string;
   jwtExpiresIn: string;
+  corsOrigins: string[];
 }
 
 function requireEnv(name: string, fallback?: string): string {
@@ -19,15 +23,29 @@ function requireEnv(name: string, fallback?: string): string {
   return value;
 }
 
+function loadCorsOrigins(): string[] {
+  const raw = process.env.CORS_ORIGINS;
+  if (raw?.trim()) {
+    return raw.split(',').map((origin) => origin.trim()).filter(Boolean);
+  }
+  return [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://localhost:3002',
+  ];
+}
+
 export function loadConfig(): ApiConfig {
   return {
     port: Number(process.env.API_PORT ?? 4000),
     nodeEnv: process.env.NODE_ENV ?? 'development',
     logLevel: process.env.LOG_LEVEL ?? 'info',
-    databaseUrl: requireEnv('DATABASE_URL', 'mysql://lingprism:lingprism@localhost:3306/lingprism'),
-    redisUrl: requireEnv('REDIS_URL', 'redis://localhost:6379/0'),
+    databaseUrl: resolveDatabaseUrl(),
+    redisUrl: resolveRedisUrl(),
     coreGrpcAddr: requireEnv('CORE_GRPC_ADDR', 'localhost:50051'),
+    aiWorkerUrl: requireEnv('AI_WORKER_URL', 'http://localhost:8001'),
     jwtSecret: requireEnv('JWT_SECRET', 'change-me-in-production'),
     jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '7d',
+    corsOrigins: loadCorsOrigins(),
   };
 }

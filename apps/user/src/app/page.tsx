@@ -1,35 +1,116 @@
 'use client';
 
-import { Card, Col, Row, Tag } from 'antd';
+import { Button, Card, Input, Space, Tag, Typography } from 'antd';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { AppShell, PageHeader } from '@lingprism/ui';
-import { GraphCanvas } from '@lingprism/graph-viz';
-import { API_BASE_URL, GRAPHQL_ENDPOINT } from '@lingprism/graphql';
+import {
+  fetchCurrentUser,
+  logout,
+  useChatSSE,
+  type AuthUser,
+} from '@lingprism/graphql';
+
+const { Text } = Typography;
 
 export default function HomePage() {
+  const router = useRouter();
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [input, setInput] = useState('');
+  const chat = useChatSSE();
+
+  useEffect(() => {
+    fetchCurrentUser()
+      .then((current) => {
+        if (!current) {
+          router.replace('/login');
+          return;
+        }
+        setUser(current);
+      })
+      .catch(() => router.replace('/login'))
+      .finally(() => setCheckingAuth(false));
+  }, [router]);
+
+  const handleSend = async () => {
+    const message = input.trim();
+    if (!message || chat.streaming) {
+      return;
+    }
+    setInput('');
+    await chat.send(message);
+  };
+
+  const handleLogout = () => {
+    logout();
+    router.replace('/login');
+  };
+
+  if (checkingAuth) {
+    return null;
+  }
+
   return (
     <AppShell appTitle="用户平台" accentColor="#f97316">
       <PageHeader
-        title="智能问答与知识探索"
-        description="自然语言提问、架构图浏览、代码检索 — Batch 0 脚手架"
+        title="智能问答"
+        description={`欢迎，${user?.displayName ?? user?.email}`}
       />
-      <Row gutter={[16, 16]}>
-        <Col xs={24} lg={16}>
-          <Card title="对话区（待 Batch 3 SSE 实现）">
-            <p>GraphQL: {GRAPHQL_ENDPOINT}</p>
-            <p>SSE: {API_BASE_URL}/api/chat/stream</p>
-          </Card>
-        </Col>
-        <Col xs={24} lg={8}>
-          <Card title="快捷入口">
-            <Tag color="orange">智能问答</Tag>
-            <Tag>架构图</Tag>
-            <Tag>代码检索</Tag>
-          </Card>
-        </Col>
-        <Col span={24}>
-          <GraphCanvas />
-        </Col>
-      </Row>
+
+      <Card
+        title="对话"
+        extra={
+          <Space>
+            <Tag color="orange">{user?.role}</Tag>
+            <Button size="small" onClick={handleLogout}>
+              退出
+            </Button>
+          </Space>
+        }
+      >
+        {chat.status ? (
+          <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+            阶段：{chat.status.phase}
+            {chat.interrupted ? '（已中断）' : ''}
+          </Text>
+        ) : null}
+
+        <div
+          style={{
+            minHeight: 160,
+            padding: 16,
+            background: '#fafafa',
+            borderRadius: 8,
+            marginBottom: 16,
+            whiteSpace: 'pre-wrap',
+          }}
+        >
+          {chat.content || '输入问题开始对话…'}
+        </div>
+
+        {chat.error ? (
+          <Text type="danger" style={{ display: 'block', marginBottom: 12 }}>
+            {chat.error}
+          </Text>
+        ) : null}
+
+        <Space.Compact style={{ width: '100%' }}>
+          <Input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="例如：支付服务核心流程是什么？"
+            onPressEnter={handleSend}
+            disabled={chat.streaming}
+          />
+          <Button type="primary" onClick={handleSend} loading={chat.streaming}>
+            发送
+          </Button>
+          <Button danger onClick={chat.stop} disabled={!chat.streaming}>
+            停止
+          </Button>
+        </Space.Compact>
+      </Card>
     </AppShell>
   );
 }
