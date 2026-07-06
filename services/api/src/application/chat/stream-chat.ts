@@ -56,6 +56,7 @@ export class StreamChatUseCase {
 export function writeSseEvent(res: Response, event: SseEvent): void {
   res.write(`event: ${event.event}\n`);
   res.write(`data: ${JSON.stringify(event.data)}\n\n`);
+  (res as Response & { flush?: () => void }).flush?.();
 }
 
 export async function pipeSseStream(

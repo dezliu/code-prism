@@ -375,7 +375,11 @@ async def stream_doc_generation(
 
     yield "status", {"phase": "analyzing"}
 
-    analysis = analyze_code_context(doc_type=doc_type, repo_names=repo_names, context=context)
+    try:
+        analysis = analyze_code_context(doc_type=doc_type, repo_names=repo_names, context=context)
+    except Exception as exc:
+        yield "error", {"code": "ANALYZE_FAILED", "message": str(exc)}
+        return
     if is_cancelled and is_cancelled():
         yield "done", {"interrupted": True}
         return

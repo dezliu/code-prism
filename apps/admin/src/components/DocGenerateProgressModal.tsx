@@ -73,17 +73,21 @@ export function DocGenerateProgressModal({
     }
 
     startedRef.current = true;
-    void (async () => {
-      const result = await generate({ docId, title, docType, repoIds });
-      if (result) {
-        onComplete(result);
-      }
-    })();
-  }, [open, docId, title, docType, repoIds, generate, onComplete, reset]);
+    void generate({ docId, title, docType, repoIds });
+  }, [open, docId, title, docType, repoIds, generate, reset]);
 
   const currentPhase = status?.phase;
   const activeStep = phaseIndex(currentPhase);
   const finished = !streaming && !error && Boolean(content) && !interrupted;
+  const canApply = Boolean(content) && !streaming;
+
+  const handleApply = () => {
+    if (!content) {
+      return;
+    }
+    onComplete(content);
+    onClose();
+  };
 
   return (
     <Modal
@@ -103,9 +107,14 @@ export function DocGenerateProgressModal({
               停止生成
             </Button>
           )}
-          <Button type="primary" disabled={streaming} onClick={onClose}>
-            {finished ? '完成' : '关闭'}
+          <Button disabled={streaming} onClick={onClose}>
+            关闭
           </Button>
+          {canApply && (
+            <Button type="primary" onClick={handleApply}>
+              使用生成文档
+            </Button>
+          )}
         </>
       )}
       destroyOnClose

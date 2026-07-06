@@ -197,10 +197,11 @@ export function KnowledgePanel() {
     }
   };
 
-  const onGenerateComplete = async (content: string) => {
+  const onApplyGeneratedContent = (content: string) => {
     editForm.setFieldValue('content', content);
-    message.success('文档已从代码仓库分析生成');
-    await loadDocs();
+    setGenerateModalOpen(false);
+    setGenerateTarget(null);
+    message.success('已回填到文档内容，确认后可点击保存');
   };
 
   const onPublish = async (id: string) => {
@@ -365,9 +366,7 @@ export function KnowledgePanel() {
           setGenerateModalOpen(false);
           setGenerateTarget(null);
         }}
-        onComplete={(content) => {
-          void onGenerateComplete(content);
-        }}
+        onComplete={onApplyGeneratedContent}
       />
     </>
   );

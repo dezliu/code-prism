@@ -30,10 +30,14 @@ function toSummary(doc: KnowledgeDocModel, includeContent = false): KnowledgeDoc
 }
 
 export async function buildKnowledgeDocContext(core: CoreHttpClient, repoIds: string[]): Promise<string> {
-  const [docContext, searchHits] = await Promise.all([
-    core.buildDocContext(repoIds),
-    core.search('系统架构 业务模块 数据表 API 接口 对外服务', repoIds),
-  ]);
+  const docContext = await core.buildDocContext(repoIds);
+
+  let searchHits: Awaited<ReturnType<CoreHttpClient['search']>> = [];
+  try {
+    searchHits = await core.search('系统架构 业务模块 数据表 API 接口 对外服务', repoIds);
+  } catch {
+    // 语义检索为补充信息，失败不阻断文档生成
+  }
 
   const sections = [docContext.contextText];
   if (searchHits.length) {
