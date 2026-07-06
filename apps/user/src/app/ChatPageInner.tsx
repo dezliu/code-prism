@@ -168,7 +168,10 @@ export default function ChatPageInner() {
       return;
     }
 
-    if (chat.streaming || chat.content) {
+    // Only load history when navigating to a session — not when streaming ends
+    // (chat.reset() clears content and would otherwise refetch and overwrite the
+    // assistant message before the server persist completes).
+    if (chat.streaming) {
       return;
     }
 
@@ -189,8 +192,8 @@ export default function ChatPageInner() {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload history when switching sessions
-  }, [sessionId, chat.streaming, chat.content]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload history only on session change
+  }, [sessionId]);
 
   useEffect(() => {
     if (!chat.sessionInfo) return;
