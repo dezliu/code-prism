@@ -42,6 +42,11 @@ export class MonitorRepository {
       .first();
   }
 
+  async listArchitectureRepoIds(): Promise<string[]> {
+    const rows = await GraphSnapshotModel.query().distinct('repo_id').select('repo_id');
+    return rows.map((r) => r.repoId);
+  }
+
   async updateArchDriftStatus(id: string, status: string): Promise<ArchDriftModel> {
     await ArchDriftModel.query().findById(id).patch({ status });
     return ArchDriftModel.query().findById(id).throwIfNotFound();

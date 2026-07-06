@@ -40,6 +40,7 @@ import {
   GetArchitectureDraftUseCase,
   GenerateArchDraftUseCase,
   PublishOfficialArchitectureUseCase,
+  ListAdminArchitecturesUseCase,
 } from '../application/architecture/architecture.use-cases.js';
 import {
   ListQaTemplatesUseCase,
@@ -147,6 +148,7 @@ export function buildGraphQLContext(
       monitorRepo,
       repoRepo,
     ),
+    listAdminArchitecturesUseCase: new ListAdminArchitecturesUseCase(monitorRepo, repoRepo),
     listQaTemplatesUseCase: new ListQaTemplatesUseCase(templateRepo),
     listEnabledQaTemplatesUseCase: new ListEnabledQaTemplatesUseCase(templateRepo),
     createQaTemplateUseCase: new CreateQaTemplateUseCase(templateRepo),

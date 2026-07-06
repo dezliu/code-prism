@@ -29,7 +29,28 @@ export const architectureTypeDefs = /* GraphQL */ `
     publishedAt: String
   }
 
+  type ArchitectureSummary {
+    id: ID!
+    repoId: ID!
+    version: Int!
+    isOfficial: Boolean!
+    versionNote: String
+    repoName: String
+    nodeCount: Int!
+    publishedAt: String
+    updatedAt: String!
+  }
+
+  type AdminArchitectureItem {
+    repoId: ID!
+    repoName: String
+    draft: ArchitectureSummary
+    official: ArchitectureSummary
+  }
+
   extend type Query {
+    adminArchitectures: [AdminArchitectureItem!]!
+    architectureDraft(repoId: ID!): Architecture
     officialArchitectures: [Architecture!]!
     officialArchitecture(repoId: ID!): Architecture
   }

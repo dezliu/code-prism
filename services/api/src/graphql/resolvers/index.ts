@@ -23,6 +23,7 @@ import type {
   GetArchitectureDraftUseCase,
   GenerateArchDraftUseCase,
   PublishOfficialArchitectureUseCase,
+  ListAdminArchitecturesUseCase,
 } from '../../application/architecture/architecture.use-cases.js';
 import type {
   ListQaTemplatesUseCase,
@@ -74,6 +75,7 @@ export interface GraphQLContext {
   getArchitectureDraftUseCase: GetArchitectureDraftUseCase;
   generateArchDraftUseCase: GenerateArchDraftUseCase;
   publishOfficialArchitectureUseCase: PublishOfficialArchitectureUseCase;
+  listAdminArchitecturesUseCase: ListAdminArchitecturesUseCase;
   listQaTemplatesUseCase: ListQaTemplatesUseCase;
   listEnabledQaTemplatesUseCase: ListEnabledQaTemplatesUseCase;
   createQaTemplateUseCase: CreateQaTemplateUseCase;
@@ -182,6 +184,20 @@ export function createResolvers() {
         withHandler(() => {
           requireAuth(ctx);
           return ctx.listArchDriftsUseCase.execute(args.status);
+        }),
+      adminArchitectures: (_: unknown, __: unknown, ctx: GraphQLContext) =>
+        withHandler(() => {
+          requireAdmin(ctx);
+          return ctx.listAdminArchitecturesUseCase.execute();
+        }),
+      architectureDraft: (_: unknown, args: { repoId: string }, ctx: GraphQLContext) =>
+        withHandler(async () => {
+          requireAdmin(ctx);
+          try {
+            return await ctx.getArchitectureDraftUseCase.execute(args.repoId);
+          } catch {
+            return null;
+          }
         }),
       officialArchitectures: (_: unknown, __: unknown, ctx: GraphQLContext) =>
         withHandler(() => {
