@@ -43,6 +43,13 @@ export interface DocContextResult {
   contextText: string;
 }
 
+export interface ArchContextResult {
+  repoId: string;
+  repoName: string;
+  url: string;
+  contextText: string;
+}
+
 export interface CoreHttpClient {
   testConnection(input: {
     url: string;
@@ -55,6 +62,8 @@ export interface CoreHttpClient {
   indexKnowledgeDoc(docId: string): Promise<{ ok: boolean; docId: string }>;
   removeKnowledgeDoc(docId: string): Promise<{ ok: boolean; docId: string; removed: boolean }>;
   buildDocContext(repoIds: string[]): Promise<DocContextResult>;
+  buildArchContext(repoId: string): Promise<ArchContextResult>;
+  /** @deprecated drafts are created by API orchestrator */
   generateArchDraft(repoId: string): Promise<{ snapshotId: string }>;
 }
 
@@ -159,6 +168,13 @@ export class CoreHttpClientImpl implements CoreHttpClient {
     }, 180_000);
   }
 
+  async buildArchContext(repoId: string): Promise<ArchContextResult> {
+    return this.request('/internal/repos/arch-context', {
+      method: 'POST',
+      body: JSON.stringify({ repoId }),
+    }, 180_000);
+  }
+
   async generateArchDraft(repoId: string): Promise<{ snapshotId: string }> {
     return this.request(`/internal/architecture/${repoId}/generate-draft`, {
       method: 'POST',
@@ -219,6 +235,15 @@ export class CoreHttpClientStub implements CoreHttpClient {
         ],
       })),
       contextText: repoIds.map((id) => `## 仓库 Mock ${id}\n\n示例上下文`).join('\n\n'),
+    };
+  }
+
+  async buildArchContext(repoId: string): Promise<ArchContextResult> {
+    return {
+      repoId,
+      repoName: `Mock Repo ${repoId.slice(0, 8)}`,
+      url: `https://example.com/${repoId}.git`,
+      contextText: `## 仓库 Mock ${repoId}\n\n### 目录结构\n\`\`\`\n.\n├── src/\n└── README.md\n\`\`\``,
     };
   }
 

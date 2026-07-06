@@ -13,6 +13,12 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from chains.doc_gen import generate_doc_content, stream_doc_generation
+from chains.arch_gen import (
+    analyze_arch_context,
+    generate_arch_graph_json,
+    repair_arch_graph_json,
+    stream_arch_generation,
+)
 from chains.qa_router import stream_qa_with_rag
 from infrastructure.config import load_env
 from infrastructure.llm.streaming import is_cancelled, request_cancel
@@ -147,6 +153,107 @@ def chat_stop(body: StopRequest) -> dict[str, bool | str]:
     client = _redis_client()
     request_cancel(client, body.stream_id)
     return {"ok": True, "streamId": body.stream_id}
+
+
+class ArchAnalyzeRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    repo_name: str = Field(alias="repoName")
+    repo_id: str = Field(alias="repoId")
+    url: str = ""
+    context: str = ""
+    official_summary: str = Field(default="", alias="officialSummary")
+
+
+class ArchGenerateRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    repo_name: str = Field(alias="repoName")
+    analysis: str = ""
+    context: str = ""
+
+
+class ArchRepairRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    errors: list[str] = Field(default_factory=list)
+    bad_json: str = Field(default="", alias="badJson")
+    analysis: str = ""
+
+
+@app.post("/internal/arch/analyze")
+def arch_analyze(body: ArchAnalyzeRequest) -> dict[str, str]:
+    analysis = analyze_arch_context(
+        repo_name=body.repo_name,
+        repo_id=body.repo_id,
+        url=body.url,
+        context=body.context,
+        official_summary=body.official_summary,
+    )
+    return {"analysis": analysis}
+
+
+@app.post("/internal/arch/generate-graph")
+def arch_generate_graph(body: ArchGenerateRequest) -> dict[str, str]:
+    content = generate_arch_graph_json(
+        repo_name=body.repo_name,
+        analysis=body.analysis,
+        context=body.context,
+    )
+    return {"content": content}
+
+
+@app.post("/internal/arch/repair")
+def arch_repair(body: ArchRepairRequest) -> dict[str, str]:
+    content = repair_arch_graph_json(
+        errors=body.errors,
+        bad_json=body.bad_json,
+        analysis=body.analysis,
+    )
+    return {"content": content}
+
+
+class ArchStreamRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    stream_id: str = Field(alias="streamId")
+    repo_name: str = Field(alias="repoName")
+    repo_id: str = Field(alias="repoId")
+    url: str = ""
+    context: str = ""
+    official_summary: str = Field(default="", alias="officialSummary")
+
+
+async def _arch_event_stream(body: ArchStreamRequest) -> AsyncIterator[str]:
+    client = _redis_client()
+
+    def cancelled() -> bool:
+        return is_cancelled(client, body.stream_id)
+
+    async for event_name, data in stream_arch_generation(
+        repo_name=body.repo_name,
+        repo_id=body.repo_id,
+        url=body.url,
+        context=body.context,
+        official_summary=body.official_summary,
+        is_cancelled=cancelled,
+    ):
+        if data is None:
+            continue
+        yield _format_sse(event_name, data)
+
+
+@app.post("/internal/arch/generate/stream")
+async def arch_generate_stream(body: ArchStreamRequest) -> StreamingResponse:
+    return StreamingResponse(
+        _arch_event_stream(body),
+        media_type="text/event-stream; charset=utf-8",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Stream-Id": body.stream_id,
+        },
+    )
 
 
 def main() -> None:

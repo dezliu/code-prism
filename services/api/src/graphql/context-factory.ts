@@ -63,6 +63,14 @@ import {
   ListAdminArchitecturesUseCase,
 } from '../application/architecture/architecture.use-cases.js';
 import {
+  RunArchGenerateJobUseCase,
+  EnqueueArchGenerateJobUseCase,
+  ListArchGenerateJobsUseCase,
+  GetArchGenerateJobUseCase,
+  CancelArchGenerateJobUseCase,
+  FailStaleArchGenerateJobsUseCase,
+} from '../application/architecture/arch-generate-job.use-cases.js';
+import {
   ListQaTemplatesUseCase,
   ListEnabledQaTemplatesUseCase,
   CreateQaTemplateUseCase,
@@ -89,6 +97,7 @@ import {
   type CoreHttpClient,
 } from '../infrastructure/clients/core-http.client.js';
 import { createAiWorkerDocClient } from '../infrastructure/clients/ai-worker-doc.client.js';
+import { createAiWorkerArchClient } from '../infrastructure/clients/ai-worker-arch.client.js';
 import {
   AiWorkerHttpStreamClient,
   type AiWorkerStreamClient,
@@ -98,6 +107,8 @@ import {
   type StreamCancelStore,
 } from '../infrastructure/clients/stream-cancel.store.js';
 import { DocGenerateJobRepository } from '../infrastructure/db/repositories/doc-generate-job.repository.js';
+import { ArchGenerateJobRepository } from '../infrastructure/db/repositories/arch-generate-job.repository.js';
+import { GraphSnapshotRepository } from '../infrastructure/db/repositories/graph-snapshot.repository.js';
 import { extractBearerToken, verifyAccessToken } from '../infrastructure/auth/jwt.js';
 import type { GraphQLContext } from './resolvers/index.js';
 
@@ -122,15 +133,27 @@ export function buildGraphQLContext(
   const monitorRepo = new MonitorRepository();
   const core = deps?.coreClient ?? createCoreHttpClient(resolveCoreHttpBaseUrls());
   const aiWorkerDoc = createAiWorkerDocClient(config);
+  const aiWorkerArch = createAiWorkerArchClient(config);
   const aiWorkerStream = deps?.aiWorkerStreamClient ?? new AiWorkerHttpStreamClient(config);
   const cancelStore = deps?.cancelStore ?? new RedisStreamCancelStore(config);
   const docGenerateJobRepo = new DocGenerateJobRepository();
+  const archGenerateJobRepo = new ArchGenerateJobRepository();
+  const graphSnapshotRepo = new GraphSnapshotRepository();
   const runDocGenerateJobUseCase = new RunDocGenerateJobUseCase(
     docGenerateJobRepo,
     knowledgeRepo,
     repoRepo,
     core,
     aiWorkerStream,
+    cancelStore,
+  );
+  const runArchGenerateJobUseCase = new RunArchGenerateJobUseCase(
+    archGenerateJobRepo,
+    repoRepo,
+    monitorRepo,
+    graphSnapshotRepo,
+    core,
+    aiWorkerArch,
     cancelStore,
   );
 
@@ -209,7 +232,26 @@ export function buildGraphQLContext(
     listOfficialArchitecturesUseCase: new ListOfficialArchitecturesUseCase(monitorRepo, repoRepo),
     getArchitectureForBrowseUseCase: new GetArchitectureForBrowseUseCase(monitorRepo, repoRepo),
     getArchitectureDraftUseCase: new GetArchitectureDraftUseCase(monitorRepo, repoRepo),
-    generateArchDraftUseCase: new GenerateArchDraftUseCase(core, monitorRepo, repoRepo),
+    generateArchDraftUseCase: new GenerateArchDraftUseCase(
+      repoRepo,
+      monitorRepo,
+      graphSnapshotRepo,
+      core,
+      aiWorkerArch,
+      cancelStore,
+    ),
+    enqueueArchGenerateJobUseCase: new EnqueueArchGenerateJobUseCase(
+      archGenerateJobRepo,
+      repoRepo,
+      runArchGenerateJobUseCase,
+    ),
+    listArchGenerateJobsUseCase: new ListArchGenerateJobsUseCase(archGenerateJobRepo, repoRepo),
+    getArchGenerateJobUseCase: new GetArchGenerateJobUseCase(archGenerateJobRepo, repoRepo),
+    cancelArchGenerateJobUseCase: new CancelArchGenerateJobUseCase(
+      archGenerateJobRepo,
+      repoRepo,
+      cancelStore,
+    ),
     publishOfficialArchitectureUseCase: new PublishOfficialArchitectureUseCase(
       monitorRepo,
       repoRepo,

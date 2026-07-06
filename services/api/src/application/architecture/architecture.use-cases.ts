@@ -1,7 +1,11 @@
-import { NotFoundError } from '../../domain/errors.js';
+import { ApplicationError, NotFoundError } from '../../domain/errors.js';
 import { MonitorRepository } from '../../infrastructure/db/repositories/monitor.repository.js';
 import { RepoRepository } from '../../infrastructure/db/repositories/repo.repository.js';
 import type { CoreHttpClient } from '../../infrastructure/clients/core-http.client.js';
+import type { AiWorkerArchClient } from '../../infrastructure/clients/ai-worker-arch.client.js';
+import type { StreamCancelStore } from '../../infrastructure/clients/stream-cancel.store.js';
+import type { GraphSnapshotRepository } from '../../infrastructure/db/repositories/graph-snapshot.repository.js';
+import { generateArchDraftEvents } from './arch-generate.orchestrator.js';
 import type { GraphData } from '../../infrastructure/db/models/graph-snapshot.model.js';
 
 export interface ArchitectureView {
@@ -156,20 +160,59 @@ export class GetArchitectureDraftUseCase {
 
 export class GenerateArchDraftUseCase {
   constructor(
-    private readonly core: CoreHttpClient,
-    private readonly monitor: MonitorRepository,
     private readonly repos: RepoRepository,
+    private readonly monitor: MonitorRepository,
+    private readonly snapshots: GraphSnapshotRepository,
+    private readonly core: CoreHttpClient,
+    private readonly aiArch: AiWorkerArchClient,
+    private readonly cancelStore: StreamCancelStore,
   ) {}
 
   async execute(repoId: string): Promise<ArchitectureView> {
-    await this.core.generateArchDraft(repoId);
-    const draft = await this.monitor.getDraftArchitecture(repoId);
-    if (!draft) {
-      throw new NotFoundError('ArchitectureDraft', repoId);
+    const { randomUUID } = await import('node:crypto');
+    const streamId = randomUUID();
+
+    let graphData: GraphData | null = null;
+    let snapshotId: string | null = null;
+
+    for await (const event of generateArchDraftEvents(
+      {
+        repos: this.repos,
+        monitor: this.monitor,
+        snapshots: this.snapshots,
+        core: this.core,
+        aiArch: this.aiArch,
+        cancelStore: this.cancelStore,
+      },
+      { repoId, streamId },
+    )) {
+      if (event.event === 'error') {
+        throw new ApplicationError(
+          String(event.data.message ?? '架构图生成失败'),
+          String(event.data.code ?? 'GENERATE_FAILED'),
+        );
+      }
+      if (event.event === 'done' && !event.data.interrupted) {
+        graphData = event.data.graphData as GraphData;
+        snapshotId = String(event.data.snapshotId ?? '');
+      }
     }
+
+    if (!graphData || !snapshotId) {
+      throw new ApplicationError('架构图生成未正常结束', 'GENERATE_FAILED');
+    }
+
     const repo = await this.repos.findById(repoId);
     const meta = repo?.metadata as { displayName?: string } | undefined;
-    return toView(draft, meta?.displayName ?? repo?.name ?? null);
+    return {
+      id: snapshotId,
+      repoId,
+      version: 1,
+      isOfficial: false,
+      graphData,
+      versionNote: null,
+      repoName: meta?.displayName ?? repo?.name ?? null,
+    };
   }
 }
 

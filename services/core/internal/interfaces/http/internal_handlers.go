@@ -25,6 +25,7 @@ func NewHandler(
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/internal/repos/test-connection", h.testConnection)
 	mux.HandleFunc("/internal/repos/doc-context", h.buildDocContext)
+	mux.HandleFunc("/internal/repos/arch-context", h.buildArchContext)
 	mux.HandleFunc("/internal/index/enqueue", h.enqueueIndex)
 	mux.HandleFunc("/internal/index/remove", h.removeIndex)
 	mux.HandleFunc("/internal/search", h.handleSearch)
@@ -51,6 +52,26 @@ func (h *Handler) testConnection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result := h.indexSvc.TestConnection(r.Context(), input)
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) buildArchContext(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		RepoID string `json:"repoId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.RepoID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "repoId required"})
+		return
+	}
+	result, err := h.indexSvc.BuildArchContext(r.Context(), body.RepoID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
 	writeJSON(w, http.StatusOK, result)
 }
 

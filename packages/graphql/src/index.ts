@@ -5,6 +5,7 @@ export { LingPrismApolloProvider } from './apollo-provider';
 export { loginWithCredentials, fetchCurrentUser, logout } from './auth-api';
 export { useChatSSE } from './use-chat-sse';
 export { useDocGenerateSSE } from './use-doc-generate-sse';
+export { useArchGenerateSSE, ARCH_PHASE_LABELS } from './use-arch-generate-sse';
 export {
   fetchDocGenerateJobs,
   fetchDocGenerateJob,
@@ -28,3 +29,19 @@ export type {
   UseDocGenerateSSEReturn,
 } from './use-doc-generate-sse';
 export type { DocGenerateJob, UseDocGenerateJobPollOptions } from './use-doc-generate-jobs';
+export {
+  fetchArchGenerateJobs,
+  fetchArchGenerateJob,
+  enqueueArchGenerateJob,
+  cancelArchGenerateJob,
+  useArchGenerateJobPoll,
+} from './use-arch-generate-jobs';
+export type {
+  ArchGeneratePhase,
+  UseArchGenerateSSEReturn,
+} from './use-arch-generate-sse';
+export type {
+  ArchGenerateJob,
+  GraphData as ArchGraphData,
+  UseArchGenerateJobPollOptions,
+} from './use-arch-generate-jobs';

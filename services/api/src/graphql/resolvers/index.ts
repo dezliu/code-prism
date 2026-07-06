@@ -34,6 +34,12 @@ import type {
   ListAdminArchitecturesUseCase,
 } from '../../application/architecture/architecture.use-cases.js';
 import type {
+  EnqueueArchGenerateJobUseCase,
+  ListArchGenerateJobsUseCase,
+  GetArchGenerateJobUseCase,
+  CancelArchGenerateJobUseCase,
+} from '../../application/architecture/arch-generate-job.use-cases.js';
+import type {
   ListQaTemplatesUseCase,
   ListEnabledQaTemplatesUseCase,
   CreateQaTemplateUseCase,
@@ -100,6 +106,10 @@ export interface GraphQLContext {
   generateArchDraftUseCase: GenerateArchDraftUseCase;
   publishOfficialArchitectureUseCase: PublishOfficialArchitectureUseCase;
   listAdminArchitecturesUseCase: ListAdminArchitecturesUseCase;
+  enqueueArchGenerateJobUseCase: EnqueueArchGenerateJobUseCase;
+  listArchGenerateJobsUseCase: ListArchGenerateJobsUseCase;
+  getArchGenerateJobUseCase: GetArchGenerateJobUseCase;
+  cancelArchGenerateJobUseCase: CancelArchGenerateJobUseCase;
   listQaTemplatesUseCase: ListQaTemplatesUseCase;
   listEnabledQaTemplatesUseCase: ListEnabledQaTemplatesUseCase;
   createQaTemplateUseCase: CreateQaTemplateUseCase;
@@ -263,6 +273,20 @@ export function createResolvers() {
           } catch {
             return null;
           }
+        }),
+      archGenerateJobs: (
+        _: unknown,
+        args: { status?: string; limit?: number },
+        ctx: GraphQLContext,
+      ) =>
+        withHandler(() => {
+          requireAdmin(ctx);
+          return ctx.listArchGenerateJobsUseCase.execute(args);
+        }),
+      archGenerateJob: (_: unknown, args: { id: string }, ctx: GraphQLContext) =>
+        withHandler(() => {
+          requireAdmin(ctx);
+          return ctx.getArchGenerateJobUseCase.execute(args.id);
         }),
       officialArchitectures: (_: unknown, __: unknown, ctx: GraphQLContext) =>
         withHandler(() => {
@@ -474,6 +498,19 @@ export function createResolvers() {
         withHandler(() => {
           requireAdmin(ctx);
           return ctx.generateArchDraftUseCase.execute(args.repoId);
+        }),
+      enqueueArchGenerateJob: (_: unknown, args: { repoId: string }, ctx: GraphQLContext) =>
+        withHandler(() => {
+          const auth = requireAdmin(ctx);
+          return ctx.enqueueArchGenerateJobUseCase.execute({
+            repoId: args.repoId,
+            createdBy: auth.userId,
+          });
+        }),
+      cancelArchGenerateJob: (_: unknown, args: { id: string }, ctx: GraphQLContext) =>
+        withHandler(() => {
+          requireAdmin(ctx);
+          return ctx.cancelArchGenerateJobUseCase.execute(args.id);
         }),
       publishOfficialArchitecture: (
         _: unknown,

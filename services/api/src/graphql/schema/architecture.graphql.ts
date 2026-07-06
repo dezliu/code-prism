@@ -48,15 +48,33 @@ export const architectureTypeDefs = /* GraphQL */ `
     official: ArchitectureSummary
   }
 
+  extend type Mutation {
+    generateArchDraft(repoId: ID!): Architecture!
+    publishOfficialArchitecture(repoId: ID!, versionNote: String!): Architecture!
+    enqueueArchGenerateJob(repoId: ID!): ArchGenerateJob!
+    cancelArchGenerateJob(id: ID!): ArchGenerateJob!
+  }
+
+  type ArchGenerateJob {
+    id: ID!
+    repoId: ID!
+    repoName: String
+    status: String!
+    phase: String
+    errorMessage: String
+    graphData: GraphData
+    attemptCount: Int!
+    createdAt: String!
+    startedAt: String
+    completedAt: String
+  }
+
   extend type Query {
     adminArchitectures: [AdminArchitectureItem!]!
     architectureDraft(repoId: ID!): Architecture
     officialArchitectures: [Architecture!]!
     officialArchitecture(repoId: ID!): Architecture
-  }
-
-  extend type Mutation {
-    generateArchDraft(repoId: ID!): Architecture!
-    publishOfficialArchitecture(repoId: ID!, versionNote: String!): Architecture!
+    archGenerateJobs(status: String, limit: Int): [ArchGenerateJob!]!
+    archGenerateJob(id: ID!): ArchGenerateJob
   }
 `;
