@@ -4,11 +4,19 @@ import { useCallback, useRef, useState } from 'react';
 import { API_BASE_URL } from './constants';
 import { getAuthToken } from '@lingprism/shared';
 
-export type ChatSSEPhase = 'understanding' | 'retrieving' | 'generating' | 'formatting';
+export type ChatSSEPhase =
+  | 'security'
+  | 'understanding'
+  | 'routing'
+  | 'retrieving'
+  | 'generating'
+  | 'grounding'
+  | 'formatting';
 
 export interface ChatSSEStatus {
   phase: ChatSSEPhase;
   streamId?: string;
+  stepLabel?: string;
 }
 
 export interface ChatSSEEvent {
@@ -192,7 +200,18 @@ export function useChatSSE(): UseChatSSEReturn {
               if (streamId) {
                 streamIdRef.current = streamId;
               }
-              setStatus({ phase, streamId: streamId ?? streamIdRef.current ?? undefined });
+              setStatus((prev) => ({
+                phase,
+                streamId: streamId ?? streamIdRef.current ?? undefined,
+                stepLabel: prev?.stepLabel,
+              }));
+            } else if (event === 'step') {
+              const label = String(data.label ?? '');
+              setStatus((prev) => ({
+                phase: prev?.phase ?? 'understanding',
+                streamId: prev?.streamId,
+                stepLabel: label || prev?.stepLabel,
+              }));
             } else if (event === 'session') {
               const id = String(data.sessionId ?? '');
               const title = String(data.title ?? '');

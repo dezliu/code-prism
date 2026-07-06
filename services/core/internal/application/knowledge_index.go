@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 
+	opensearchstore "github.com/lingprism/core/internal/infrastructure/opensearch"
 	qdrantclient "github.com/lingprism/core/internal/infrastructure/qdrant"
 )
 
@@ -67,13 +68,16 @@ func knowledgeDocPointID(docID string, chunkIndex int) uint64 {
 	return binary.BigEndian.Uint64(sum[:8])
 }
 
-func buildKnowledgeDocPoints(docID, title, repoID string, chunks []string, dim int) []map[string]interface{} {
+func buildKnowledgeDocPoints(docID, title, repoID string, chunks []string, dim int, vectors [][]float32) []map[string]interface{} {
 	points := make([]map[string]interface{}, 0, len(chunks))
 	for i, chunk := range chunks {
-		embedText := title + "\n" + chunk
+		vec := qdrantclient.HashEmbed(title+"\n"+chunk, dim)
+		if i < len(vectors) && len(vectors[i]) > 0 {
+			vec = vectors[i]
+		}
 		points = append(points, map[string]interface{}{
 			"id":     knowledgeDocPointID(docID, i),
-			"vector": qdrantclient.HashEmbed(embedText, dim),
+			"vector": vec,
 			"payload": map[string]interface{}{
 				"kind":    "knowledge_doc",
 				"docId":   docID,
@@ -131,11 +135,32 @@ func (s *SearchService) IndexKnowledgeDoc(ctx context.Context, docID string) err
 		return err
 	}
 
-	points := buildKnowledgeDocPoints(docID, title, repoID, chunks, s.qdrantDim)
+	vectors := make([][]float32, len(chunks))
+	for i, chunk := range chunks {
+		vectors[i] = s.embedQuery(ctx, title+"\n"+chunk)
+	}
+
+	points := buildKnowledgeDocPoints(docID, title, repoID, chunks, s.qdrantDim, vectors)
 	if len(points) == 0 {
 		return nil
 	}
-	return s.qdrant.UpsertPoints(ctx, points)
+	if err := s.qdrant.UpsertPoints(ctx, points); err != nil {
+		return err
+	}
+
+	if s.openSearch != nil && s.openSearch.Enabled() {
+		for i, chunk := range chunks {
+			_ = s.openSearch.IndexDocument(ctx, opensearchstore.SearchDocument{
+				ID:      fmt.Sprintf("%s:%d", docID, i),
+				Type:    "doc",
+				Title:   title,
+				Snippet: chunk,
+				Ref:     docID,
+				RepoID:  repoID,
+			})
+		}
+	}
+	return nil
 }
 
 func (s *SearchService) RemoveKnowledgeDoc(ctx context.Context, docID string) error {

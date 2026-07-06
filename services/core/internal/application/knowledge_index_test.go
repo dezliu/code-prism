@@ -23,7 +23,7 @@ func TestChunkKnowledgeText(t *testing.T) {
 func TestBuildKnowledgeDocPoints(t *testing.T) {
 	t.Parallel()
 
-	points := buildKnowledgeDocPoints("doc-1", "标题", "repo-1", []string{"内容片段"}, 8)
+	points := buildKnowledgeDocPoints("doc-1", "标题", "repo-1", []string{"内容片段"}, 8, nil)
 	if len(points) != 1 {
 		t.Fatalf("expected 1 point, got %d", len(points))
 	}

@@ -516,7 +516,7 @@ export default function ChatPageInner() {
             {chat.streaming && chat.status ? (
               <div className="user-status-line">
                 <span className="user-status-dot" />
-                阶段：{chat.status.phase}
+                {chat.status.stepLabel ?? `阶段：${chat.status.phase}`}
               </div>
             ) : null}
 

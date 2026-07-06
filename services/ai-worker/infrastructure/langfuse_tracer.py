@@ -28,6 +28,29 @@ def get_langfuse_client() -> Any | None:
 
 
 @contextmanager
+def trace_workflow_node(
+    name: str,
+    *,
+    trace_id: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> Generator[None, None, None]:
+    """Span for workflow node execution."""
+    client = get_langfuse_client()
+    start = time.perf_counter()
+    meta = {"trace_id": trace_id, **(metadata or {})}
+    span = None
+    if client is not None:
+        trace = client.trace(name="qa_workflow", id=trace_id) if trace_id else client.trace(name="qa_workflow")
+        span = trace.span(name=name, metadata=meta)
+    try:
+        yield
+    finally:
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        if span is not None:
+            span.end(metadata={**meta, "latency_ms": latency_ms})
+
+
+@contextmanager
 def trace_llm_call(
     *,
     name: str,

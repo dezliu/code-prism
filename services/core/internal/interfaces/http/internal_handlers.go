@@ -2,6 +2,7 @@ package http
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -12,14 +13,16 @@ type Handler struct {
 	indexSvc  *application.IndexService
 	searchSvc *application.SearchService
 	archSvc   *application.ArchitectureService
+	graphSvc  *application.GraphQueryService
 }
 
 func NewHandler(
 	index *application.IndexService,
 	search *application.SearchService,
 	arch *application.ArchitectureService,
+	graph *application.GraphQueryService,
 ) *Handler {
-	return &Handler{indexSvc: index, searchSvc: search, archSvc: arch}
+	return &Handler{indexSvc: index, searchSvc: search, archSvc: arch, graphSvc: graph}
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
@@ -29,6 +32,8 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/internal/index/enqueue", h.enqueueIndex)
 	mux.HandleFunc("/internal/index/remove", h.removeIndex)
 	mux.HandleFunc("/internal/search", h.handleSearch)
+	mux.HandleFunc("/internal/search/hybrid", h.handleHybridSearch)
+	mux.HandleFunc("/internal/graph/neighbors", h.handleGraphNeighbors)
 	mux.HandleFunc("/internal/knowledge/index", h.indexKnowledgeDoc)
 	mux.HandleFunc("/internal/knowledge/remove", h.removeKnowledgeDoc)
 	mux.HandleFunc("/internal/repos/webhook/", h.repoWebhook)
@@ -151,6 +156,65 @@ func (h *Handler) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) handleHybridSearch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		Query   string   `json:"q"`
+		RepoIDs []string `json:"repoIds"`
+		Intent  string   `json:"intent"`
+		Mode    string   `json:"mode"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	result, err := h.searchSvc.HybridSearch(r.Context(), application.HybridSearchInput{
+		Query: body.Query, RepoIDs: body.RepoIDs, Intent: body.Intent, Mode: body.Mode,
+	})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) handleGraphNeighbors(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	entity := r.URL.Query().Get("entity")
+	if entity == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "entity required"})
+		return
+	}
+	repoIDs := []string{}
+	if raw := r.URL.Query().Get("repoIds"); raw != "" {
+		repoIDs = strings.Split(raw, ",")
+	}
+	depth := 3
+	if raw := r.URL.Query().Get("depth"); raw != "" {
+		if _, err := fmt.Sscanf(raw, "%d", &depth); err != nil {
+			depth = 3
+		}
+	}
+	if h.graphSvc == nil {
+		writeJSON(w, http.StatusOK, application.SearchResult{Hits: []application.SearchHit{}})
+		return
+	}
+	hits, err := h.graphSvc.Neighbors(r.Context(), application.GraphNeighborInput{
+		Entity: entity, RepoIDs: repoIDs, Depth: depth,
+	})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, application.SearchResult{Hits: hits})
 }
 
 func (h *Handler) indexKnowledgeDoc(w http.ResponseWriter, r *http.Request) {

@@ -17,6 +17,7 @@ import type { SseEvent } from '../../infrastructure/clients/ai-worker.client.js'
 import type { ContextAnchor } from '../../infrastructure/db/models/chat-session.model.js';
 import type { MessageSource } from '../../infrastructure/db/models/chat-message.model.js';
 import type { ListEnabledQaTemplatesUseCase } from '../template/template.use-cases.js';
+import type { RepoRepository } from '../../infrastructure/db/repositories/repo.repository.js';
 
 export class ChatStreamOrchestrator {
   constructor(
@@ -26,6 +27,7 @@ export class ChatStreamOrchestrator {
     private readonly getSessionContext: GetSessionContextUseCase,
     private readonly persistMessage: PersistChatMessageUseCase,
     private readonly listEnabledQaTemplates: ListEnabledQaTemplatesUseCase,
+    private readonly repos: RepoRepository,
   ) {}
 
   async handle(input: {
@@ -69,6 +71,8 @@ export class ChatStreamOrchestrator {
 
     const sessionContext = await this.getSessionContext.execute(sessionId, input.userId);
     const qaTemplates = await this.listEnabledQaTemplates.execute();
+    const allowedRepoIds = await this.repos.listIndexedRepoIds();
+    const traceId = randomUUID();
 
     const streamInput: StreamChatInput = {
       message,
@@ -82,6 +86,8 @@ export class ChatStreamOrchestrator {
           content: m.content,
         })),
         qaTemplates,
+        allowedRepoIds,
+        traceId,
       },
     };
 

@@ -10,6 +10,7 @@ import {
 } from '../../infrastructure/clients/ai-worker.client.js';
 import { createHealthRouter } from './health.js';
 import { createChatRoutes } from './chat-routes.js';
+import { createMcpInternalRoutes } from './mcp-internal-routes.js';
 import { createKnowledgeDocRoutes } from './knowledge-doc-routes.js';
 import { createArchitectureRoutes } from './architecture-routes.js';
 import { RedisStreamCancelStore, type StreamCancelStore } from '../../infrastructure/clients/stream-cancel.store.js';
@@ -36,6 +37,11 @@ export function createApp(deps: HttpServerDeps): Express {
     aiWorkerClient,
     cancelStore,
     usePersistence: deps.usePersistence,
+  }));
+  app.use(createMcpInternalRoutes({
+    config: deps.config,
+    aiWorkerClient,
+    cancelStore,
   }));
   app.use(createKnowledgeDocRoutes({
     config: deps.config,

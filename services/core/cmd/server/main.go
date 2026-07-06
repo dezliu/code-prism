@@ -13,8 +13,10 @@ import (
 	"github.com/lingprism/core/internal/application"
 	"github.com/lingprism/core/internal/infrastructure/config"
 	gitclient "github.com/lingprism/core/internal/infrastructure/git"
+	"github.com/lingprism/core/internal/infrastructure/embedding"
 	idxclient "github.com/lingprism/core/internal/infrastructure/indexer"
 	neo4jstore "github.com/lingprism/core/internal/infrastructure/neo4j"
+	opensearchstore "github.com/lingprism/core/internal/infrastructure/opensearch"
 	"github.com/lingprism/core/internal/infrastructure/mysql"
 	qdrantclient "github.com/lingprism/core/internal/infrastructure/qdrant"
 	httpiface "github.com/lingprism/core/internal/interfaces/http"
@@ -43,6 +45,13 @@ func main() {
 	gitClient := gitclient.NewClient(cfg.GitWorkDir)
 	indexerClient := idxclient.NewClient(cfg.IndexerBinary)
 	qdrantStore := qdrantclient.NewClient(cfg.QdrantURL, cfg.QdrantCollection, cfg.EmbeddingDim)
+	embedder := embedding.NewClient(cfg.EmbeddingDim)
+	openSearch := opensearchstore.NewClient(cfg.OpenSearchURL)
+	if openSearch.Enabled() {
+		if err := openSearch.EnsureIndex(context.Background()); err != nil {
+			log.Printf(`{"level":"warn","msg":"opensearch index setup failed","error":%q}`, err.Error())
+		}
+	}
 
 	var neo4jClient *neo4jstore.Client
 	if cfg.Neo4jURI != "" {
@@ -55,13 +64,15 @@ func main() {
 	var indexSvc *application.IndexService
 	var searchSvc *application.SearchService
 	var archSvc *application.ArchitectureService
+	var graphSvc *application.GraphQueryService
 	var repoSyncSvc *application.RepoSyncService
 	if db != nil {
 		indexSvc = application.NewIndexService(db, application.IndexServiceDeps{
 			Git: gitClient, Indexer: indexerClient, Neo4j: neo4jClient,
 			Qdrant: qdrantStore, QdrantDim: cfg.EmbeddingDim,
 		})
-		searchSvc = application.NewSearchService(db, qdrantStore, cfg.EmbeddingDim)
+		searchSvc = application.NewSearchService(db, qdrantStore, cfg.EmbeddingDim, embedder, openSearch, neo4jClient)
+		graphSvc = application.NewGraphQueryService(neo4jClient)
 		archSvc = application.NewArchitectureService(db)
 		repoSyncSvc = application.NewRepoSyncService(db, gitClient)
 	}
@@ -74,7 +85,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle("/health", httpiface.NewHealthHandler(healthSvc))
 	if indexSvc != nil && searchSvc != nil && archSvc != nil {
-		internalHandler := httpiface.NewHandler(indexSvc, searchSvc, archSvc)
+		internalHandler := httpiface.NewHandler(indexSvc, searchSvc, archSvc, graphSvc)
 		internalHandler.Register(mux)
 	}
 

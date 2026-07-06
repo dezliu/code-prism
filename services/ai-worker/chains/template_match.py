@@ -5,6 +5,9 @@ from __future__ import annotations
 import re
 from typing import Any
 
+TEMPLATE_AUTO_APPLY_THRESHOLD = 0.85
+TEMPLATE_HINT_THRESHOLD = 0.6
+
 
 DEFAULT_TEMPLATES: list[dict[str, Any]] = [
     {
@@ -28,6 +31,50 @@ DEFAULT_TEMPLATES: list[dict[str, Any]] = [
 ]
 
 
+def _keyword_overlap_score(message: str, template: dict[str, Any]) -> float:
+    keywords = template.get("keywords") or []
+    if not keywords:
+        return 0.0
+    lower = message.lower()
+    hits = 0
+    for kw in keywords:
+        if kw.lower() in lower or re.search(re.escape(kw), message, re.IGNORECASE):
+            hits += 1
+    return min(1.0, hits / max(len(keywords), 1))
+
+
+def score_templates(
+    message: str,
+    *,
+    templates: list[dict[str, Any]] | None = None,
+    limit: int = 5,
+) -> list[dict[str, Any]]:
+    """Return templates with normalized score in [0, 1]."""
+    source = templates if templates else DEFAULT_TEMPLATES
+    scored: list[tuple[float, int, dict[str, Any]]] = []
+
+    for template in source:
+        score = _keyword_overlap_score(message, template)
+        if score > 0:
+            priority = int(template.get("priority") or 0)
+            scored.append((score, priority, template))
+
+    scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    results: list[dict[str, Any]] = []
+    for score, _, template in scored[:limit]:
+        results.append(
+            {
+                "templateId": template.get("templateId") or template.get("id", ""),
+                "name": template["name"],
+                "preview": template.get("preview") or template.get("previewTemplate", ""),
+                "score": round(score, 3),
+                "outputSchema": template.get("outputSchema") or template.get("output_schema"),
+                "_raw": template,
+            }
+        )
+    return results
+
+
 def match_templates(
     message: str,
     *,
@@ -35,28 +82,13 @@ def match_templates(
     limit: int = 2,
 ) -> list[dict[str, Any]]:
     """Return template hints scored by keyword overlap with the user message."""
-    source = templates if templates else DEFAULT_TEMPLATES
-    scored: list[tuple[int, int, dict[str, Any]]] = []
-    lower = message.lower()
-
-    for template in source:
-        score = 0
-        keywords = template.get("keywords") or []
-        for kw in keywords:
-            if kw.lower() in lower or re.search(re.escape(kw), message, re.IGNORECASE):
-                score += 1
-        if score > 0:
-            priority = int(template.get("priority") or 0)
-            scored.append((score, priority, template))
-
-    scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
-    hints: list[dict[str, Any]] = []
-    for _, _, template in scored[:limit]:
-        hints.append(
-            {
-                "templateId": template.get("templateId") or template.get("id", ""),
-                "name": template["name"],
-                "preview": template.get("preview") or template.get("previewTemplate", ""),
-            }
-        )
-    return hints
+    scored = score_templates(message, templates=templates, limit=limit)
+    return [
+        {
+            "templateId": item["templateId"],
+            "name": item["name"],
+            "preview": item["preview"],
+        }
+        for item in scored
+        if item.get("score", 0) >= TEMPLATE_HINT_THRESHOLD
+    ][:limit]

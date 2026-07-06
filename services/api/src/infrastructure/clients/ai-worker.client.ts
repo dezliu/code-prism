@@ -37,7 +37,11 @@ export interface ChatStreamRequest {
       preview: string;
       keywords: string[];
       priority: number;
+      outputSchema?: Record<string, unknown>;
     }>;
+    allowedRepoIds?: string[];
+    traceId?: string;
+    applyTemplateId?: string;
   };
 }
 

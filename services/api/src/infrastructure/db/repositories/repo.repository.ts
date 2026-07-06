@@ -36,6 +36,14 @@ export class RepoRepository {
     return RepoModel.query().withGraphFetched('metadata').orderBy('updated_at', 'desc');
   }
 
+  async listIndexedRepoIds(): Promise<string[]> {
+    const rows = await RepoModel.query()
+      .select('id')
+      .where('indexed_in_search', true)
+      .where('enabled', true);
+    return rows.map((row) => row.id);
+  }
+
   async findById(id: string): Promise<RepoModel | undefined> {
     return RepoModel.query().findById(id).withGraphFetched('metadata');
   }

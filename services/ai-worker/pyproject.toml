@@ -37,4 +37,4 @@ lingprism-ai-http = "internal_http.server:main"
 testpaths = ["tests"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["workers", "chains", "infrastructure", "scripts", "internal_http"]
+packages = ["workers", "chains", "infrastructure", "scripts", "internal_http", "workflow"]

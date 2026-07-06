@@ -17,7 +17,7 @@ def test_resolve_query_switches_topic():
 
 
 def test_classify_intent_in_qa_router():
-    from chains.qa_router import classify_intent
+    from chains.intent_rules import classify_intent
 
     intents = classify_intent("支付服务的架构依赖是什么？")
     assert "architecture" in intents

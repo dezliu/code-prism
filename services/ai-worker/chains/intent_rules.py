@@ -1,0 +1,20 @@
+"""Regex-based intent hints (fallback when LLM unavailable)."""
+
+from __future__ import annotations
+
+import re
+
+
+def classify_intent(message: str) -> list[str]:
+    intents: list[str] = []
+    if re.search(r"架构|依赖|调用|模块|服务关系", message):
+        intents.append("architecture")
+    if re.search(r"函数|类|代码|接口|字段|表", message):
+        intents.append("code")
+    if re.search(r"文档|手册|ADR|培训", message):
+        intents.append("doc")
+    if re.search(r"负责人|谁负责|团队", message):
+        intents.append("people")
+    if not intents:
+        intents.append("general")
+    return intents

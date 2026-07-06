@@ -94,3 +94,62 @@ func (c *Client) DeleteRepoGraph(ctx context.Context, repoID string) error {
 	})
 	return err
 }
+
+type GraphNeighborRow struct {
+	Title   string
+	Snippet string
+	Ref     string
+	Score   float64
+}
+
+func (c *Client) QueryNeighbors(ctx context.Context, entity string, repoIDs []string, depth int) ([]GraphNeighborRow, error) {
+	if c == nil || c.driver == nil {
+		return nil, nil
+	}
+
+	session := c.driver.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeRead})
+	defer session.Close(ctx)
+
+	repoFilter := ""
+	params := map[string]any{"entity": entity, "depth": depth}
+	if len(repoIDs) == 1 {
+		repoFilter = "AND n.repoId = $repoId AND m.repoId = $repoId"
+		params["repoId"] = repoIDs[0]
+	}
+
+	query := fmt.Sprintf(`
+		MATCH (n:GraphNode)
+		WHERE (n.label CONTAINS $entity OR n.id CONTAINS $entity) %s
+		MATCH path = (n)-[:REL*1..%d]->(m:GraphNode)
+		WITH n, m, relationships(path) AS rels
+		RETURN n.label AS source, m.label AS target,
+		       rels[0].label AS relLabel
+		LIMIT 20
+	`, repoFilter, depth)
+
+	result, err := session.Run(ctx, query, params)
+	if err != nil {
+		return nil, err
+	}
+
+	rows := []GraphNeighborRow{}
+	for result.Next(ctx) {
+		record := result.Record()
+		source, _ := record.Get("source")
+		target, _ := record.Get("target")
+		relLabel, _ := record.Get("relLabel")
+		src := fmt.Sprint(source)
+		tgt := fmt.Sprint(target)
+		rel := fmt.Sprint(relLabel)
+		rows = append(rows, GraphNeighborRow{
+			Title:   fmt.Sprintf("%s → %s", src, tgt),
+			Snippet: fmt.Sprintf("%s -[%s]-> %s", src, rel, tgt),
+			Ref:     fmt.Sprintf("%s:%s", src, tgt),
+			Score:   0.65,
+		})
+	}
+	if err := result.Err(); err != nil {
+		return nil, err
+	}
+	return rows, nil
+}

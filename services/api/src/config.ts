@@ -13,6 +13,7 @@ export interface ApiConfig {
   aiWorkerUrl: string;
   jwtSecret: string;
   jwtExpiresIn: string;
+  mcpServiceToken: string;
   corsOrigins: string[];
 }
 
@@ -39,6 +40,7 @@ export function loadConfig(): ApiConfig {
     aiWorkerUrl: requireEnv('AI_WORKER_URL', 'http://localhost:8001'),
     jwtSecret: requireEnv('JWT_SECRET', 'change-me-in-production'),
     jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '7d',
+    mcpServiceToken: process.env.MCP_SERVICE_TOKEN ?? '',
     corsOrigins: loadCorsOrigins(),
   };
 }
