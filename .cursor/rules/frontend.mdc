@@ -1,0 +1,136 @@
+---
+description: 前端 React/Next.js 组件、Apollo GraphQL、Ant Design 开发规范
+globs: frontend/**/*.{ts,tsx},web/**/*.{ts,tsx},apps/web/**/*.{ts,tsx},**/*.{tsx,jsx}
+alwaysApply: false
+---
+
+# 前端开发规则
+
+> **适用场景**：用于前端 UI 组件开发、页面交互、GraphQL 数据获取与 Ant Design 集成。
+
+**AI 决策前应首先检查本规则。**
+
+---
+
+## 必须做
+
+- 使用函数组件 + TypeScript；共享逻辑抽取为自定义 Hook
+- 数据获取统一走 Apollo Client（`useQuery` / `useMutation` / `useLazyQuery`），不直接在组件内裸调 `fetch`
+- 区分 **Server Component** 与 **Client Component**（`'use client'` 仅在有交互/状态时添加）
+- UI 状态（表单、弹窗、选中项）与 **服务端数据状态** 分离管理
+- 列表/表格必须处理 **loading、empty、error** 三态
+- 图谱可视化（D3.js / Sigma.js）封装为独立组件，与页面业务状态解耦
+- 复用项目已有的 Apollo Client 实例、错误处理中间件与类型生成（Codegen）
+- 性能敏感区域使用 `React.memo`、`useMemo`、`useCallback`（有测量依据时）
+- 路由级代码分割优先使用 Next.js 动态 import（`next/dynamic`）
+
+## 禁止做
+
+- 在 UI 组件中硬编码业务规则或权限判断（应来自 Hook / 上下文 / 后端）
+- 在组件内直接写 GraphQL 字符串而不走 Codegen 类型
+- 绕过 Apollo 缓存策略随意 `fetchPolicy: 'no-cache'`（须说明理由）
+- 全局引入 Ant Design 全量样式或重复注册 ConfigProvider
+- 在 render 中创建内联对象/函数导致子树无意义重渲染
+- 把 D3/Sigma  DOM 操作与 React 状态更新混在同一函数中不加清理
+- 为"好看"引入与 Ant Design 冲突的第三方 UI 库
+
+---
+
+## 组件结构
+
+```tsx
+// ❌ BAD — 业务逻辑、数据获取、UI 混在一起
+function ItemList() {
+  const [items, setItems] = useState([]);
+  useEffect(() => {
+    fetch('/api/items').then(r => r.json()).then(setItems);
+  }, []);
+  const filtered = items.filter(i => i.status === 'active'); // 业务规则硬编码
+  return <ul>{filtered.map(i => <li key={i.id}>{i.name}</li>)}</ul>;
+}
+
+// ✅ GOOD — 分层清晰
+function ItemListContainer() {
+  const { data, loading, error } = useListItemsQuery();
+  if (loading) return <Skeleton active />;
+  if (error) return <ErrorResult error={error} />;
+  if (!data?.items.length) return <Empty description="暂无数据" />;
+  return <ItemListView items={data.items} />;
+}
+```
+
+---
+
+## Apollo GraphQL 调用
+
+```tsx
+// ❌ BAD — 无错误处理、无 loading、mutation 后不失效缓存
+function DeleteButton({ id }: { id: string }) {
+  const [remove] = useDeleteItemMutation();
+  return <Button onClick={() => remove({ variables: { id } })}>删除</Button>;
+}
+
+// ✅ GOOD
+function DeleteButton({ id }: { id: string }) {
+  const [remove, { loading }] = useDeleteItemMutation({
+    refetchQueries: [{ query: ListItemsDocument }],
+    onError: (err) => message.error(err.message),
+  });
+  return (
+    <Button
+      danger
+      loading={loading}
+      onClick={() => remove({ variables: { id } })}
+    >
+      删除
+    </Button>
+  );
+}
+```
+
+---
+
+## Ant Design 使用约束
+
+```tsx
+// ❌ BAD — 魔法数字、内联样式覆盖主题、Form 不受控
+<Modal width={437} style={{ top: 20 }}>
+  <Input defaultValue={name} />
+</Modal>
+
+// ✅ GOOD — 使用 Design Token / 主题变量，Form 受控
+const { token } = theme.useToken();
+<Modal width={token.modalWidth ?? 520} destroyOnClose>
+  <Form form={form} layout="vertical" onFinish={handleSubmit}>
+    <Form.Item name="name" label="名称" rules={[{ required: true }]}>
+      <Input />
+    </Form.Item>
+  </Form>
+</Modal>
+```
+
+- 优先使用 Ant Design 内置组件（Table、Form、Modal、Drawer），避免重复造轮子
+- 表格分页、排序、筛选逻辑抽取为 Hook，保持 Column 定义稳定
+- 图标统一从 `@ant-design/icons` 引入
+
+---
+
+## 状态管理
+
+| 状态类型 | 推荐方案 |
+|----------|----------|
+| 服务端数据 | Apollo Client Cache |
+| 局部 UI 状态 | `useState` / `useReducer` |
+| 跨组件 UI 状态 | React Context（范围最小化） |
+| URL 可分享状态 | Next.js `searchParams` / Router |
+
+- 禁止为可缓存的服务端数据再套一层全局状态库
+
+---
+
+## 性能优化
+
+- 图片使用 `next/image`，静态资源走 CDN 前缀
+- 大列表使用虚拟滚动（`rc-virtual-list` 或 Ant Design 内置方案）
+- 避免在顶层 Layout 触发不必要的 Client Component 水合
+- 图谱组件在容器尺寸变化时 debounce 重绘

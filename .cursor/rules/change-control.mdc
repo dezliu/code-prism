@@ -1,0 +1,135 @@
+---
+description: 变更范围控制与代码评审清单，补充 AGENTS.md 最小闭环交付原则
+alwaysApply: true
+---
+
+# 变更与重构规则
+
+> **适用场景**：用于所有代码变更的 scope 控制、PR 自检与代码评审——无论前端、后端或基础设施。
+
+**AI 决策前应首先检查本规则。**
+
+---
+
+## 必须做
+
+- 以**最小闭环**交付：一次 PR/改动解决一个明确问题
+- 改动前先定位影响面（调用方、Schema、迁移、缓存、索引）
+- 破坏性变更须：**提前说明 + 迁移/兼容方案 + 回滚步骤**
+- 新增依赖评估：许可证、包大小、安全漏洞、与现有栈一致性
+- 完成 AGENTS.md 规定的输出模板（文件、行为、原因、验证、假设、风险）
+- 代码评审前先自检下方清单
+
+## 禁止做
+
+- 未经说明的大面积重命名或跨模块无关重构
+- 顺手"整理"未涉及的文件（格式化、import 排序、目录搬迁）
+- 引入新框架替代已有方案（状态库、ORM、UI 库）
+- 没有业务收益的重写（"看起来更优雅"）
+- 在一个 PR 中混合无关功能（Feature + Refactor + Format）
+- 删除测试以让 CI 通过
+
+---
+
+## 变更规模判定
+
+| 规模 | 特征 | 要求 |
+|------|------|------|
+| **S** | ≤3 文件，无 Schema/迁移 | 单元测试 + 自测 |
+| **M** | 多文件，或含 Schema 变更 | 集成/契约测试 + 影响面说明 |
+| **L** | 跨模块、迁移、索引重建 | 完整测试 + 回滚方案 + 分步发布建议 |
+
+- 超过 **M** 规模时，主动建议拆分 PR
+
+---
+
+## 代码评审清单
+
+### 通用
+
+- [ ] 改动范围与需求一致，无无关 diff
+- [ ] 命名清晰，无 magic number / magic string
+- [ ] 错误处理完整，无空 catch
+- [ ] 无 `@ts-ignore` / `eslint-disable` 滥用
+- [ ] 无调试代码（`console.log`、`debugger`、`.only`）
+- [ ] 无硬编码密钥、Token、内网地址
+
+### 接口与契约
+
+- [ ] GraphQL Schema 变更向后兼容，或附迁移说明
+- [ ] 字段语义未偷偷变更（类型、nullable、默认值）
+- [ ] 事件/消息结构变更已评估消费者
+- [ ] 权限模型未被绕过
+
+### 数据
+
+- [ ] 迁移有 up/down，评估锁表风险
+- [ ] 无 N+1、无全表扫描
+- [ ] 缓存与 DB 一致性策略明确
+- [ ] 向量/全文索引变更有重建计划
+
+### 可观测性
+
+- [ ] 关键路径有 traceId + 结构化日志
+- [ ] LLM 调用有 Langfuse 埋点
+- [ ] 日志无敏感信息
+
+### 测试
+
+- [ ] 测试层级与改动风险匹配
+- [ ] Bug 修复含回归测试
+- [ ] CI 可稳定运行（无外部依赖）
+
+---
+
+## 示例：范围控制
+
+```typescript
+// ❌ BAD — 改 bug 顺手重构整个模块 + 换库
+// fix: null check in search
+- import axios from 'axios';
++ import { gqlClient } from '@/lib/apollo';
+// ... 200 lines refactored ...
+
+// ✅ GOOD — 最小修复
+function normalizeResults(raw: RawHit[] | null): SearchResult[] {
+  if (!raw?.length) return [];
+  return raw.map(toSearchResult);
+}
+```
+
+```typescript
+// ❌ BAD — 破坏性 Schema 变更无说明
+type Query {
+  search(input: String!): [Result!]!  # 删掉了 limit 参数
+}
+
+// ✅ GOOD — 兼容扩展
+type Query {
+  search(query: String!, limit: Int = 10): [Result!]!
+  # @deprecated search — 将在 v2 移除，请用 searchV2
+}
+```
+
+---
+
+## 允许的小范围整理
+
+- 抽取与本次改动直接相关的私有函数
+- 修复同一文件内由本次改动触发的 lint 错误
+- 补充本次改动缺失的类型定义
+
+## 默认不允许
+
+- 批量 import 排序（除非项目 pre-commit 强制）
+- 跨目录移动未修改的文件
+- 统一错误码/日志格式的"顺手"全局替换
+
+---
+
+## PR 描述最低要求
+
+1. **What**：改了什么
+2. **Why**：为什么这样改
+3. **How to test**：验证步骤与命令
+4. **Risk**：假设、未覆盖场景、回滚方式

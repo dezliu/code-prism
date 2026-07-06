@@ -1,0 +1,153 @@
+---
+description: GraphQL Resolver、Service/UseCase 分层、外部调用与错误处理规范
+globs: backend/**/*.{ts,js,go},api/**/*.{ts,js,go},**/graphql/**/*.{ts,js},**/resolvers/**/*.{ts,js},**/services/**/*.{ts,js},**/usecases/**/*.{ts,js}
+alwaysApply: false
+---
+
+# 后端 API 与编排规则
+
+> **适用场景**：用于 GraphQL Resolver 编写、应用服务编排、外部系统调用（LangChain、Qdrant、Redis）及 API 层错误处理。
+
+**AI 决策前应首先检查本规则。**
+
+---
+
+## 必须做
+
+- **Resolver 只做**：参数校验、鉴权上下文读取、调用 Service/UseCase、DTO 映射、GraphQL 错误转换
+- **Service / UseCase 承载**：业务编排、领域规则、事务边界声明
+- 外部调用（LangChain、Qdrant、Redis、OpenSearch、Neo4j）封装在 **Infrastructure / Client** 层，由 Service 注入调用
+- 所有对外部系统的调用必须有 **超时、重试策略（幂等操作）、失败日志**
+- 错误分层：`DomainError` → `ApplicationError` → `GraphQL/HTTP Error`；禁止裸抛原始异常到客户端
+- 日志携带 `traceId`、`requestId`、操作类型；敏感字段脱敏
+- 新增 GraphQL 字段须同步更新 Schema 与权限声明
+
+## 禁止做
+
+- 在 Resolver 中写 SQL、ORM 查询或直接操作 Redis/Qdrant
+- 在 Resolver 中编排多步业务流程或管理事务
+- 把 LangChain Prompt / Chain 逻辑散落在 Resolver 里
+- 吞掉异常（空 `catch`）或向客户端暴露堆栈/SQL/内部路径
+- 绕过统一鉴权中间件在单个 Resolver 硬编码权限
+- 引入与现有 API 契约冲突的隐式字段或破坏性变更
+
+---
+
+## 分层示例
+
+```typescript
+// ❌ BAD — Resolver 内含业务逻辑 + 外部调用 + 持久化
+const resolvers = {
+  Query: {
+    async searchKnowledge(_: unknown, { query }: { query: string }, ctx: Context) {
+      const embedding = await openai.embed(query);
+      const hits = await qdrant.search('kb', embedding);
+      const filtered = hits.filter(h => h.score > 0.8 && ctx.user.role === 'admin');
+      await redis.set(`search:${ctx.user.id}`, JSON.stringify(filtered));
+      return filtered;
+    },
+  },
+};
+
+// ✅ GOOD — 职责分离
+const resolvers = {
+  Query: {
+    searchKnowledge: async (_: unknown, args: SearchInput, ctx: Context) => {
+      const input = searchInputSchema.parse(args);
+      await assertPermission(ctx, 'knowledge:read');
+      return ctx.searchKnowledgeUseCase.execute(input, ctx.traceId);
+    },
+  },
+};
+```
+
+```typescript
+// ✅ GOOD — UseCase 编排，Infrastructure 注入
+class SearchKnowledgeUseCase {
+  constructor(
+    private readonly embedder: EmbedderClient,
+    private readonly vectorStore: VectorStoreClient,
+    private readonly cache: CacheClient,
+    private readonly logger: Logger,
+  ) {}
+
+  async execute(input: SearchInput, traceId: string): Promise<SearchResult[]> {
+    const cacheKey = buildCacheKey(input);
+    const cached = await this.cache.get<SearchResult[]>(cacheKey);
+    if (cached) return cached;
+
+    const vector = await this.embedder.embed(input.query, { traceId });
+    const results = await this.vectorStore.search(input.collection, vector, {
+      limit: input.limit,
+      traceId,
+    });
+
+    await this.cache.set(cacheKey, results, { ttl: 300 });
+    this.logger.info('search.completed', { traceId, hitCount: results.length });
+    return results;
+  }
+}
+```
+
+---
+
+## 外部调用规范
+
+| 系统 | 要求 |
+|------|------|
+| **LangChain** | Chain/Agent 定义在独立模块；Prompt 版本化；调用包裹 Langfuse span |
+| **Qdrant** | 通过 VectorStoreClient 抽象；collection 名常量集中管理 |
+| **Redis** | Key 命名遵循 `{service}:{entity}:{id}` 模式；设置 TTL；禁止存储明文密钥 |
+| **Celery** | 长耗时/异步任务走队列，不在 Resolver 同步等待 |
+
+```typescript
+// ❌ BAD — 无超时、无 trace、Key 随意
+const raw = await redis.get(`tmp_${id}`);
+const chain = new LLMChain({ llm, prompt });
+const out = await chain.call({ input });
+
+// ✅ GOOD
+const raw = await redis.get(buildCacheKey('item', id));
+const out = await withTimeout(
+  () => chain.invoke({ input }, { callbacks: [langfuseHandler], metadata: { traceId } }),
+  { ms: 30_000, label: 'llm.chain.invoke' },
+);
+```
+
+---
+
+## 错误处理
+
+```typescript
+// ❌ BAD
+catch (e) {
+  throw e;
+}
+
+// ✅ GOOD
+catch (err) {
+  logger.error('usecase.search.failed', {
+    traceId,
+    error: err instanceof Error ? err.message : 'unknown',
+  });
+  if (err instanceof DomainError) {
+    throw toGraphQLError(err);
+  }
+  throw new GraphQLError('搜索服务暂时不可用', {
+    extensions: { code: 'SEARCH_UNAVAILABLE' },
+  });
+}
+```
+
+- 客户端可见错误信息须**通用化**；详细原因仅写日志
+- 幂等接口与写操作区分错误码（`CONFLICT`、`NOT_FOUND`、`FORBIDDEN`）
+
+---
+
+## 日志最低要求
+
+每次 Resolver / UseCase 入口记录：
+
+- `traceId`、`operationName`（或 UseCase 名）
+- 关键输入标识（非敏感字段）
+- 耗时（外部调用单独计时）

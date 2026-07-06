@@ -1,0 +1,151 @@
+---
+description: 结构化日志、traceId 传递、Langfuse 埋点与敏感信息屏蔽
+globs: **/*.{ts,tsx,js,go,py}
+alwaysApply: false
+---
+
+# 可观测性规则
+
+> **适用场景**：用于任何影响生产行为的代码改动——日志、Tracing、Langfuse 埋点、性能指标与敏感信息处理。
+
+**AI 决策前应首先检查本规则。**
+
+---
+
+## 必须做
+
+- 复用项目已有的 Logger / Tracer / Langfuse 集成，**不另起一套**
+- 每个请求入口生成或继承 `traceId`，全链路透传（Resolver → UseCase → 外部 Client）
+- 日志使用**结构化 JSON**（键值对），包含：`level`、`message`、`traceId`、`timestamp`、`service`
+- 外部调用（DB、Redis、Qdrant、LLM、HTTP）记录：`durationMs`、`target`、`success`、`errorCode`
+- LLM 调用通过 Langfuse 记录：`prompt`、`completion`、`model`、`tokenUsage`、`latency`
+- 关键业务动作记录可度量事件（如 `item.created`、`search.executed`）
+- 失败日志必须**可定位**（足够上下文，不含敏感原文）
+
+## 禁止做
+
+- 日志输出密码、Token、API Key、完整 PII、原始 Prompt 中的密钥
+- 使用 `console.log` 代替统一 Logger（本地调试除外，提交前删除）
+- 吞掉异常而不记录
+- 各模块自定义互不兼容的日志格式
+- 无 traceId 的孤立日志（无法关联请求）
+- 在高频循环中打 DEBUG 日志
+
+---
+
+## 日志结构
+
+```typescript
+// ❌ BAD
+console.log('search failed', err);
+logger.info(`User ${user.email} searched ${query} with key ${apiKey}`);
+
+// ✅ GOOD
+logger.info('search.completed', {
+  traceId,
+  requestId,
+  operation: 'searchKnowledge',
+  durationMs: Date.now() - start,
+  hitCount: results.length,
+  userId: user.id, // 标识符，非 PII 原文
+});
+logger.error('search.failed', {
+  traceId,
+  operation: 'searchKnowledge',
+  error: err instanceof Error ? err.message : 'unknown',
+  errorCode: err instanceof DomainError ? err.code : 'INTERNAL',
+});
+```
+
+---
+
+## traceId 传递
+
+```typescript
+// ❌ BAD — traceId 丢失
+async function handler(req, res) {
+  const result = await searchUseCase.execute(req.body);
+  res.json(result);
+}
+
+// ✅ GOOD — 中间件注入 + 全链路透传
+async function handler(req: Request, res: Response) {
+  const traceId = req.headers['x-trace-id'] ?? generateTraceId();
+  res.setHeader('x-trace-id', traceId);
+  const result = await searchUseCase.execute(req.body, { traceId });
+  res.json(result);
+}
+```
+
+- HTTP 响应头回传 `x-trace-id`
+- 异步任务（Celery）将 traceId 写入 task payload
+- GraphQL Context 注入 `{ traceId, logger }`
+
+---
+
+## Langfuse 埋点
+
+```typescript
+// ❌ BAD — 无埋点、无 token 统计
+const response = await llm.invoke(prompt);
+
+// ✅ GOOD
+const span = langfuse.trace({ id: traceId, name: 'knowledge-search' });
+const generation = span.generation({
+  name: 'embed-query',
+  model: embedModel,
+  input: redactSensitive(input.query),
+});
+try {
+  const response = await llm.invoke(prompt, { callbacks: [langfuseHandler] });
+  generation.end({
+    output: redactSensitive(response.content),
+    usage: { input: response.usage?.promptTokens, output: response.usage?.completionTokens },
+  });
+  return response;
+} catch (err) {
+  generation.end({ level: 'ERROR', statusMessage: String(err) });
+  throw err;
+}
+```
+
+- Prompt / Completion 入库前调用 `redactSensitive()`
+- 记录 model 名称、latency、token 用量、错误状态
+
+---
+
+## 敏感信息屏蔽
+
+| 类型 | 处理方式 |
+|------|----------|
+| 密码 / Token / API Key | **永不记录**；仅记录 `[REDACTED]` 或 hash 前缀 |
+| 邮箱 / 手机号 | 脱敏：`u***@example.com`、`138****5678` |
+| 搜索词 / 用户输入 | 截断 + 脱敏；调试级别才记录，生产默认 INFO |
+| SQL 参数 | 不记录绑定值；仅记录 query 模板名 |
+| 请求 Headers | 过滤 `Authorization`、`Cookie` |
+
+```typescript
+function redactSensitive(text: string): string {
+  return text
+    .replace(/Bearer\s+\S+/gi, 'Bearer [REDACTED]')
+    .replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, '[EMAIL]');
+}
+```
+
+---
+
+## 性能指标
+
+- 关键路径记录 `durationMs`（P50/P99 由监控系统聚合，代码层保证埋点）
+- 慢查询阈值：DB > 500ms、LLM > 5s、向量检索 > 1s 打 WARN
+- 缓存命中率可记录 `cacheHit: true/false`
+
+---
+
+## 改动自检清单
+
+- [ ] 失败路径有 ERROR 日志且带 traceId
+- [ ] 外部调用有耗时记录
+- [ ] LLM 调用有 Langfuse span
+- [ ] 无敏感信息泄露
+- [ ] 未引入新的日志库/格式

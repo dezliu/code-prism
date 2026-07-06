@@ -1,0 +1,153 @@
+---
+description: 单元测试、集成测试、契约测试选型与 Mock 策略
+globs: **/*.{test,spec}.{ts,tsx,js,jsx,go,py},**/__tests__/**/*,**/tests/**/*
+alwaysApply: false
+---
+
+# 测试策略规则
+
+> **适用场景**：用于编写与审查单元测试、集成测试、契约测试，以及确定 Mock 边界。
+
+**AI 决策前应首先检查本规则。**
+
+---
+
+## 必须做
+
+- 按改动风险选择测试层级（见下表），**至少满足 AGENTS.md 最低要求**
+- 测试命名表达行为：`should [expected] when [condition]`
+- 每个测试独立、可重复；禁止依赖执行顺序或共享可变全局状态
+- 优先测试**行为与契约**，而非实现细节（不断言私有方法调用次数）
+- Bug 修复须附**回归测试**复现原问题
+- Mock 仅用于边界外部（DB、Redis、Qdrant、LLM、HTTP）；被测模块内部不 Mock
+- 测试数据使用 Factory/Fixture，不硬编码 magic value 散落多处
+
+## 禁止做
+
+- 虚构测试通过结果或未运行的测试命令
+- 测试依赖生产环境或真实 API Key
+- 过度 Mock 导致"测了等于没测"（全 Mock 的 Service 集成测试）
+- 断言实现细节（如精确调用次数）代替行为断言
+- 无断言的"烟雾测试"冒充覆盖
+- 提交 `.only` / `.skip` 或未删除的 `console.log` 调试代码
+
+---
+
+## 测试层级选型
+
+| 改动类型 | 推荐测试 | 覆盖重点 |
+|----------|----------|----------|
+| 纯函数 / 领域逻辑 | 单元测试 | 输入输出、边界条件 |
+| UseCase / Service 编排 | 单元测试 + Mock 外部依赖 | 流程分支、错误传播 |
+| GraphQL Resolver | 集成测试 / 契约测试 | Schema 字段、权限、错误码 |
+| Repository / 查询 | 集成测试（测试 DB） | SQL 正确性、分页、事务 |
+| 前端组件 | 组件测试（RTL） | 交互、三态渲染 |
+| API 契约变更 | 契约测试 / Schema Snapshot | 破坏性变更检测 |
+
+---
+
+## 单元测试示例
+
+```typescript
+// ❌ BAD — 测实现、无边界、依赖真实 DB
+it('works', async () => {
+  const svc = new SearchUseCase(realQdrant, realRedis);
+  const result = await svc.execute({ query: 'test' });
+  expect(svc.embedder.embed).toHaveBeenCalledTimes(1);
+});
+
+// ✅ GOOD — 测行为、Mock 边界、覆盖异常
+describe('SearchKnowledgeUseCase', () => {
+  it('should return cached results when cache hit', async () => {
+    const cached = [{ id: '1', score: 0.9 }];
+    const cache = { get: vi.fn().mockResolvedValue(cached), set: vi.fn() };
+    const useCase = new SearchKnowledgeUseCase(mockEmbedder, mockVectorStore, cache, mockLogger);
+
+    const result = await useCase.execute({ query: 'hello', limit: 10 }, 'trace-1');
+
+    expect(result).toEqual(cached);
+    expect(mockEmbedder.embed).not.toHaveBeenCalled();
+  });
+
+  it('should propagate DomainError when collection not found', async () => {
+    mockVectorStore.search.mockRejectedValue(new CollectionNotFoundError('kb'));
+    await expect(useCase.execute(input, 'trace-2')).rejects.toThrow(CollectionNotFoundError);
+  });
+});
+```
+
+---
+
+## 集成 / 契约测试示例
+
+```typescript
+// ✅ GOOD — GraphQL 集成测试
+it('should reject unauthenticated search request', async () => {
+  const { body } = await request(app)
+    .post('/graphql')
+    .send({ query: SEARCH_QUERY, variables: { query: 'test' } });
+
+  expect(body.errors[0].extensions.code).toBe('UNAUTHENTICATED');
+});
+
+// ✅ GOOD — Schema 契约快照（防破坏性变更）
+it('should match SearchResult type schema', () => {
+  expect(printSchema(schema)).toMatchSnapshot();
+});
+```
+
+---
+
+## Mock 策略
+
+| 依赖 | Mock 方式 | 注意 |
+|------|-----------|------|
+| MySQL / Objection | 测试 DB（容器或 SQLite 内存）优先；必要时 Mock Repository 接口 | 迁移须可跑 |
+| Redis | `ioredis-mock` 或 Mock CacheClient 接口 | 验证 TTL / Key 格式 |
+| Qdrant / OpenSearch | Mock Client 接口 | 返回结构化假数据 |
+| LangChain / LLM | Mock LLM 响应或 recorded fixtures | 不测 Prompt 措辞，测分支 |
+| 时间 | `vi.useFakeTimers()` / 注入 Clock | 避免 flaky |
+
+```typescript
+// ❌ BAD — Mock 过多层
+vi.mock('./repository');
+vi.mock('./embedder');
+vi.mock('./cache');
+vi.mock('./logger');
+// 实际只测了 Mock 串联
+
+// ✅ GOOD — 只 Mock 最外层端口
+const deps = {
+  embedder: createMockEmbedder(),
+  vectorStore: createMockVectorStore(),
+  cache: createInMemoryCache(),
+  logger: createSilentLogger(),
+};
+const useCase = new SearchKnowledgeUseCase(...Object.values(deps));
+```
+
+---
+
+## 前端组件测试
+
+```tsx
+// ✅ GOOD — 三态覆盖
+it('should show empty state when no items', () => {
+  render(<ItemListContainer />, {
+    mocks: [{ request: { query: ListItemsDocument }, result: { data: { items: [] } } }],
+  });
+  expect(screen.getByText('暂无数据')).toBeInTheDocument();
+});
+```
+
+- GraphQL Mock 使用 `MockedProvider`，与 Codegen 类型对齐
+- 用户交互使用 `@testing-library/user-event`
+
+---
+
+## 完成检查清单
+
+- [ ] 新增/变更行为有对应层级测试
+- [ ] 边界条件与错误路径已覆盖
+- [ ] 测试可在 CI 无外部依赖环境运行
+- [ ] 未 Mock 掉被测核心逻辑
