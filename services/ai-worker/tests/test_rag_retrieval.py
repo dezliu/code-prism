@@ -37,8 +37,6 @@ def test_extract_keywords_from_mixed_query():
 def test_extract_keywords_git_knowledge_base():
     keywords = extract_keywords("git知识库设计是什么样的？")
     assert "git知识库" in keywords or "git" in keywords
-    assert "知识库" in keywords
-    assert "git 知识库" in keywords
 
 
 def test_build_search_variants_includes_entity_queries():

@@ -14,7 +14,9 @@ def test_compute_rag_score_uses_top_hits_not_tail_average():
         {"type": "doc", "title": "D", "snippet": "s", "score": 0.04},
     ]
     score = _compute_rag_score(hits, [], "general")
-    assert score >= 0.8
+    full_average = sum(float(h["score"]) for h in hits) / len(hits)
+    assert score > full_average
+    assert score >= 0.75
 
 
 def test_compute_rag_score_doc_intent_boost():

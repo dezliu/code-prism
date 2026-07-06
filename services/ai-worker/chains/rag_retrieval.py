@@ -46,17 +46,17 @@ def extract_keywords(query: str) -> list[str]:
 
     for match in _MIXED_ENTITY_PATTERN.finditer(query):
         mixed = match.group()
+        if re.match(r"[A-Za-z][A-Za-z0-9_-]*的", mixed):
+            continue
         add(mixed)
-        prefix = re.match(r"[A-Za-z][A-Za-z0-9_-]*", mixed)
-        if prefix:
-            add(prefix.group())
         split = re.match(r"([A-Za-z][A-Za-z0-9_-]*)([\u4e00-\u9fa5]+)", mixed)
         if split:
             eng, han = split.group(1), split.group(2)
-            add(han)
-            add(f"{eng} {han}")
-            add(f"{eng} knowledge")
-            add(f"{eng} knowledge base")
+            add(eng)
+            if len(han) >= 2:
+                add(f"{eng}{han}")
+                if "知识库" in han:
+                    add(f"{eng} {han}")
 
     for match in _IDENTIFIER_PATTERN.finditer(query):
         token = match.group()
@@ -76,8 +76,11 @@ def build_search_variants(query: str) -> list[str]:
     """Heuristic query variants before LLM expansion."""
     variants = [query.strip()]
     keywords = extract_keywords(query)
+    english = sorted([k for k in keywords if re.match(r"^[A-Za-z]", k)], key=len)
+    other = sorted([k for k in keywords if k not in english], key=len)
+    ordered_keywords = english + other
 
-    for kw in keywords:
+    for kw in ordered_keywords:
         variants.extend(
             [
                 kw,

@@ -8,7 +8,8 @@
     "migrate:latest": "npm run knex -- migrate:latest",
     "migrate:rollback": "npm run knex -- migrate:rollback",
     "migrate:status": "npm run knex -- migrate:status",
-    "seed": "npm run knex -- seed:run"
+    "seed": "npm run knex -- seed:run",
+    "bootstrap": "node --import tsx scripts/bootstrap-data.ts"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",

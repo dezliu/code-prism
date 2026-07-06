@@ -1,0 +1,188 @@
+{
+  "version": "demo-v1",
+  "datasetKey": "lingprism-demo",
+  "demoIds": {
+    "repos": ["00000000-0000-4000-8000-000000000010"],
+    "knowledgeBases": ["00000000-0000-4000-8000-000000000020"],
+    "knowledgeDocItems": [
+      "00000000-0000-4000-8000-000000000021",
+      "00000000-0000-4000-8000-000000000022"
+    ],
+    "qaTemplates": [
+      "00000000-0000-4000-8000-000000000030",
+      "00000000-0000-4000-8000-000000000031",
+      "00000000-0000-4000-8000-000000000032"
+    ],
+    "alertRules": [
+      "00000000-0000-4000-8000-000000000040",
+      "00000000-0000-4000-8000-000000000041"
+    ],
+    "healthScores": ["00000000-0000-4000-8000-000000000050"],
+    "archDriftRecords": ["00000000-0000-4000-8000-000000000060"]
+  },
+  "repos": [
+    {
+      "id": "00000000-0000-4000-8000-000000000010",
+      "url": "https://github.com/dezliu/code-prism.git",
+      "name": "code-prism",
+      "auth_type": "https",
+      "auth_config": null,
+      "default_branch": "main",
+      "branch_policy": null,
+      "connection_status": "connected",
+      "connection_error": null,
+      "language_summary": {
+        "TypeScript": 120,
+        "Go": 85,
+        "Python": 64,
+        "Rust": 42,
+        "Markdown": 38
+      },
+      "last_commit_at": "2026-07-01T08:00:00.000Z",
+      "last_commit_summary": "feat: RAG hybrid search and chat streaming",
+      "enabled": true,
+      "indexed_in_search": false,
+      "index_status": "none",
+      "local_commit_hash": null,
+      "remote_commit_hash": null,
+      "indexed_commit_hash": null,
+      "sync_status": "synced",
+      "last_synced_at": "2026-07-01T08:00:00.000Z"
+    }
+  ],
+  "repoMetadata": [
+    {
+      "repo_id": "00000000-0000-4000-8000-000000000010",
+      "display_name": "灵镜平台",
+      "tags": ["monorepo", "RAG", "知识图谱"],
+      "business_owner": "平台研发部",
+      "tech_owner": "架构组"
+    }
+  ],
+  "knowledgeBases": [
+    {
+      "id": "00000000-0000-4000-8000-000000000020",
+      "title": "灵镜平台知识库",
+      "repo_ids": ["00000000-0000-4000-8000-000000000010"],
+      "created_by": "00000000-0000-4000-8000-000000000001"
+    }
+  ],
+  "knowledgeDocItems": [
+    {
+      "id": "00000000-0000-4000-8000-000000000021",
+      "knowledge_base_id": "00000000-0000-4000-8000-000000000020",
+      "title": "系统架构概览",
+      "doc_type": "design",
+      "status": "published",
+      "content": "灵镜 (LingPrism) 是企业知识与代码智能平台。技术栈：Next.js 前端三端、Node GraphQL API、Go Core、Rust Indexer、Python AI Worker/MCP。数据层包含 MySQL、Redis、Neo4j、Qdrant、OpenSearch。索引流水线：Git clone → tree-sitter 解析 → Qdrant 向量 + Neo4j 图谱。",
+      "indexed_in_search": true
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000022",
+      "knowledge_base_id": "00000000-0000-4000-8000-000000000020",
+      "title": "本地开发与 Docker 部署",
+      "doc_type": "ops",
+      "status": "published",
+      "content": "本地开发：pnpm install → docker compose 启动数据层 → migrate + seed + bootstrap → 分别启动 api/core/ai-worker 与前端。Docker 全栈：cd infra/docker && docker compose --profile app up -d --build，统一从 http://localhost:8080 访问。开发账户 admin@lingprism.local / employee@lingprism.local，密码 lingprism123。",
+      "indexed_in_search": true
+    }
+  ],
+  "qaTemplates": [
+    {
+      "id": "00000000-0000-4000-8000-000000000030",
+      "name": "架构概览",
+      "question_types": ["architecture"],
+      "keywords": ["架构", "模块", "组件", "技术栈", "系统设计"],
+      "output_fields": [
+        { "name": "overview", "required": true },
+        { "name": "modules", "required": true },
+        { "name": "dependencies", "required": false }
+      ],
+      "preview_template": "请概述 {{repo}} 的系统架构，包括核心模块、技术栈与模块间依赖关系。",
+      "applicable_roles": ["employee", "admin"],
+      "status": "enabled",
+      "priority": 100,
+      "created_by": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000031",
+      "name": "代码定位",
+      "question_types": ["code"],
+      "keywords": ["代码", "实现", "函数", "类", "在哪里", "怎么写"],
+      "output_fields": [
+        { "name": "location", "required": true },
+        { "name": "summary", "required": true }
+      ],
+      "preview_template": "在代码库中定位与「{{question}}」相关的实现，给出文件路径与关键逻辑说明。",
+      "applicable_roles": ["employee", "admin"],
+      "status": "enabled",
+      "priority": 90,
+      "created_by": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000032",
+      "name": "运维与部署",
+      "question_types": ["doc", "architecture"],
+      "keywords": ["部署", "Docker", "启动", "环境", "配置", "端口"],
+      "output_fields": [
+        { "name": "steps", "required": true },
+        { "name": "prerequisites", "required": false }
+      ],
+      "preview_template": "说明如何部署与启动 {{repo}}，列出环境要求、配置项与验证步骤。",
+      "applicable_roles": ["employee", "admin"],
+      "status": "enabled",
+      "priority": 80,
+      "created_by": "00000000-0000-4000-8000-000000000001"
+    }
+  ],
+  "alertRules": [
+    {
+      "id": "00000000-0000-4000-8000-000000000040",
+      "name": "健康分低于 70",
+      "rule_type": "health_score_min",
+      "scope": "global",
+      "scope_id": null,
+      "threshold_value": 70,
+      "threshold_unit": "score",
+      "notify_channels": ["email", "webhook"],
+      "enabled": true,
+      "created_by": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000041",
+      "name": "架构漂移未处理",
+      "rule_type": "arch_drift",
+      "scope": "project",
+      "scope_id": "00000000-0000-4000-8000-000000000010",
+      "threshold_value": 1,
+      "threshold_unit": "count",
+      "notify_channels": ["email"],
+      "enabled": true,
+      "created_by": "00000000-0000-4000-8000-000000000001"
+    }
+  ],
+  "healthScores": [
+    {
+      "id": "00000000-0000-4000-8000-000000000050",
+      "repo_id": "00000000-0000-4000-8000-000000000010",
+      "score": 82,
+      "metrics": {
+        "testCoverage": 0.72,
+        "circularDeps": 2,
+        "avgFileLines": 186,
+        "openDrifts": 1
+      }
+    }
+  ],
+  "archDriftRecords": [
+    {
+      "id": "00000000-0000-4000-8000-000000000060",
+      "repo_id": "00000000-0000-4000-8000-000000000010",
+      "description": "services/api 新增 chat-stream-orchestrator，与文档中的模块边界描述不一致",
+      "drift_type": "module_boundary",
+      "source_node": "services/api",
+      "target_node": "services/ai-worker",
+      "status": "open"
+    }
+  ]
+}

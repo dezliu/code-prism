@@ -1,4 +1,4 @@
-# One-shot MySQL migration + seed
+# One-shot MySQL migration + seed + demo bootstrap
 # Build: docker build -f infra/docker/Dockerfile.migrate -t lingprism-migrate .
 FROM node:20-alpine
 ARG NPM_REGISTRY=https://registry.npmmirror.com
@@ -8,6 +8,9 @@ RUN cd infra/migrations && npm config set registry ${NPM_REGISTRY} && npm ci
 COPY infra/migrations/knexfile.ts ./infra/migrations/
 COPY infra/migrations/migrations ./infra/migrations/migrations
 COPY infra/migrations/seeds ./infra/migrations/seeds
+COPY infra/migrations/scripts ./infra/migrations/scripts
+COPY infra/data/demo ./infra/data/demo
+COPY infra/docker/scripts/entrypoint-migrate.sh ./infra/docker/scripts/entrypoint-migrate.sh
+RUN chmod +x /app/infra/docker/scripts/entrypoint-migrate.sh
 WORKDIR /app/infra/migrations
-# MySQL healthcheck may pass before TCP accepts remote connections on first boot.
-CMD ["sh", "-c", "i=0; max=30; until npm run migrate; do i=$((i+1)); if [ $i -ge $max ]; then echo 'migrate failed after retries'; exit 1; fi; echo \"Waiting for MySQL ($i/$max)...\"; sleep 2; done; npm run seed"]
+CMD ["/app/infra/docker/scripts/entrypoint-migrate.sh"]

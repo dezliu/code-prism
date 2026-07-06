@@ -47,7 +47,7 @@ def _format_context_lines(hits: list[dict[str, Any]]) -> list[str]:
     return lines
 
 
-def _top_scores(values: list[float], limit: int = 3) -> list[float]:
+def _top_scores(values: list[float], limit: int = 2) -> list[float]:
     if not values:
         return []
     ordered = sorted(values, reverse=True)
