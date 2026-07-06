@@ -3,9 +3,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "migrate": "node --import tsx ./node_modules/knex/bin/cli.js --knexfile knexfile.ts migrate:latest",
-    "migrate:rollback": "node --import tsx ./node_modules/knex/bin/cli.js --knexfile knexfile.ts migrate:rollback",
-    "seed": "node --import tsx ./node_modules/knex/bin/cli.js --knexfile knexfile.ts seed:run"
+    "knex": "node --import tsx ./node_modules/knex/bin/cli.js --knexfile knexfile.ts",
+    "migrate": "npm run knex -- migrate:latest",
+    "migrate:latest": "npm run knex -- migrate:latest",
+    "migrate:rollback": "npm run knex -- migrate:rollback",
+    "migrate:status": "npm run knex -- migrate:status",
+    "seed": "npm run knex -- seed:run"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",

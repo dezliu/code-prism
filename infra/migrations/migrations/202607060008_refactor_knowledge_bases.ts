@@ -1,5 +1,38 @@
 import type { Knex } from 'knex';
 
+/** Normalize legacy repo_ids values (string | array | JSON text) to a string[]. */
+export function normalizeRepoIds(raw: unknown): string[] {
+  if (raw == null) {
+    return [];
+  }
+  if (Array.isArray(raw)) {
+    return raw.map(String).map((s) => s.trim()).filter(Boolean);
+  }
+  if (typeof raw === 'object' && raw !== null) {
+    try {
+      return normalizeRepoIds(JSON.parse(JSON.stringify(raw)));
+    } catch {
+      return [];
+    }
+  }
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      return [];
+    }
+    if (trimmed.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(trimmed) as unknown;
+        return normalizeRepoIds(parsed);
+      } catch {
+        return [trimmed];
+      }
+    }
+    return [trimmed];
+  }
+  return [];
+}
+
 export async function up(knex: Knex): Promise<void> {
   const hasBases = await knex.schema.hasTable('knowledge_bases');
   if (!hasBases) {
@@ -46,10 +79,11 @@ export async function up(knex: Knex): Promise<void> {
       if (existingBase) {
         continue;
       }
+      const repoIds = normalizeRepoIds(row.repo_ids);
       await knex('knowledge_bases').insert({
         id: row.id,
         title: row.title,
-        repo_ids: row.repo_ids,
+        repo_ids: JSON.stringify(repoIds),
         created_by: row.created_by,
         created_at: row.created_at,
         updated_at: row.updated_at,
