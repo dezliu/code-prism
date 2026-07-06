@@ -1,0 +1,35 @@
+# Git & IDE
+.git
+.gitignore
+.cursor
+.cursorrules
+**/.DS_Store
+
+# Dependencies & build outputs
+**/node_modules
+**/.next
+**/dist
+**/.turbo
+**/.venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/target
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+!**/.env.example
+
+# Docs & plans (not needed in images)
+docs/
+*.md
+!README.md
+
+# Local data volumes
+infra/docker/volumes/
+
+# Test artifacts
+**/coverage
+**/.coverage

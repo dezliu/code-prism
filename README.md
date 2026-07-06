@@ -122,6 +122,122 @@ pnpm dev:monitor
 3. 在对话区发送问题 → 观察 SSE 流式回答
 4. 点击「停止」可中断生成
 
+## 一键全栈部署（Docker Compose）
+
+Batch 4 提供 **Nginx 统一入口 + 各服务 Dockerfile**，无需本地安装 Node/Go/Python 即可运行 Demo。
+
+### 前置条件
+
+- Docker Desktop / OrbStack 已安装并运行
+- 可选：在 `infra/docker/.env` 中设置 `ZHIPU_API_KEY`（流式问答需真实 LLM）
+
+### 启动命令
+
+```bash
+cd infra/docker
+cp .env.example .env
+# 编辑 .env，填入 ZHIPU_API_KEY（可选）
+
+# 全栈构建并启动（数据层 + 应用 + Nginx）
+docker compose --profile app up -d --build
+
+# 查看状态
+docker compose --profile app ps
+```
+
+首次启动会自动执行 **MySQL 迁移 + 种子数据**（`migrate` 一次性任务）。
+
+### 访问入口（Nginx :8080）
+
+| 地址 | 说明 |
+|------|------|
+| http://localhost:8080 | 用户平台（默认路由） |
+| http://localhost:8080/graphql | GraphQL API |
+| http://localhost:8080/api/chat/stream | SSE 流式问答 |
+| http://localhost:8080/mcp | MCP 2025 端点 |
+| http://user.localhost:8080 | 用户平台（子域） |
+| http://admin.localhost:8080 | 管理后台 |
+| http://monitor.localhost:8080 | 监控平台 |
+| http://api.localhost:8080/graphql | API 专用子域 |
+
+健康检查：
+
+```bash
+curl http://localhost:8080/api/health
+```
+
+### 全栈端到端验证
+
+1. 打开 http://localhost:8080/login
+2. 登录 `employee@lingprism.local` / `lingprism123`
+3. 发送问题 → 观察 SSE 流式回答（需配置 `ZHIPU_API_KEY`）
+4. MCP 探活（需 Header `MCP-Protocol-Version: 2025-03-26` 与 API Key）：
+
+```bash
+curl -s http://localhost:8080/mcp \
+  -H "Content-Type: application/json" \
+  -H "MCP-Protocol-Version: 2025-03-26" \
+  -H "Authorization: Bearer dev-key-1" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+```
+
+### 仅启动数据层
+
+与 Batch 0 行为一致，不构建应用镜像：
+
+```bash
+cd infra/docker
+docker compose up -d
+```
+
+### 停止与清理
+
+```bash
+cd infra/docker
+docker compose --profile app down        # 停止容器，保留数据卷
+docker compose --profile app down -v     # 停止并删除数据卷
+```
+
+### Dockerfile 清单
+
+| 文件 | 服务 |
+|------|------|
+| `infra/docker/Dockerfile.api` | GraphQL + SSE 网关 |
+| `infra/docker/Dockerfile.core` | Go 核心业务 |
+| `infra/docker/Dockerfile.indexer` | Rust 索引器（CLI） |
+| `infra/docker/Dockerfile.mcp` | MCP 2025 服务 |
+| `infra/docker/Dockerfile.ai-worker` | AI Worker HTTP + Celery |
+| `infra/docker/Dockerfile.frontend` | Next.js 三前端（build-arg `APP`） |
+| `infra/docker/Dockerfile.migrate` | 一次性 DB 迁移 |
+
+Nginx 配置位于 `infra/nginx/`。
+
+### 基础设施测试
+
+```bash
+cd infra/docker/tests
+npm install
+npm test
+```
+
+覆盖 Nginx 路由断言、`docker-compose.yml` 结构校验、`nginx -t` 语法检查。
+
+### Go 模块代理（core 镜像构建）
+
+Docker 构建 `core` 时默认使用 `GOPROXY=https://goproxy.cn,direct`（见 `infra/docker/.env.example`）。若出现 `proxy.golang.org ... i/o timeout`：
+
+```bash
+# infra/docker/.env
+GOPROXY=https://goproxy.cn,direct
+```
+
+海外网络可改为 `GOPROXY=https://proxy.golang.org,direct`，然后重新构建：
+
+```bash
+cd infra/docker
+docker compose --profile app build core
+```
+
 ## 端口一览
 
 | 服务 | 端口 | 说明 |
@@ -133,6 +249,7 @@ pnpm dev:monitor
 | ai-worker HTTP | 8001 | 内部 LLM 流式 `/internal/chat/stream` |
 | core HTTP / gRPC | 8080 / 50051 | Go 核心业务 |
 | mcp | 8090 | MCP 2025 端点 |
+| nginx | 8080 | 全栈统一入口（`--profile app`） |
 | MySQL | 13306* | *docker 示例端口 |
 | Redis | 6380* | *docker 示例端口 |
 
@@ -155,7 +272,8 @@ services/
   ai-worker/  # Celery + LangChain + LLM factory
   mcp/        # MCP 2025 对外服务
 infra/
-  docker/     # docker-compose 数据层
+  docker/     # docker-compose + 各服务 Dockerfile
+  nginx/      # Nginx 反向代理（三前端 + API + MCP）
   migrations/ # MySQL Knex 迁移与 seed
 docs/         # PRD、API 契约
 ```
@@ -202,6 +320,14 @@ ulimit -n 10240
 pnpm dev:user
 ```
 
+### Docker 构建 `core` 时 `go mod download` 超时
+
+`proxy.golang.org` 在国内网络常不可达。确认 `infra/docker/.env` 含 `GOPROXY=https://goproxy.cn,direct` 后重建：
+
+```bash
+cd infra/docker && docker compose --profile app build core
+```
+
 ## 开发批次进度
 
 | 批次 | 内容 | 状态 |
@@ -210,12 +336,15 @@ pnpm dev:user
 | Batch 1 | 五服务骨架（api/core/indexer/mcp/ai-worker） | ✅ |
 | Batch 2 | LLM 多厂商适配 · Qdrant collection 命名 | ✅ |
 | Batch 3 | 本地认证 · SSE 流式问答 · 三端 LoginForm | ✅ |
-| Batch 4 | Dockerfile · Nginx 全栈部署 | 待实现 |
+| Batch 4 | Dockerfile · Nginx 全栈部署 | ✅ |
 | Batch 5 | Phase 1 P0 业务闭环 | 待实现 |
 
 ## 测试
 
 ```bash
+# 基础设施（Batch 4）
+cd infra/docker/tests && npm install && npm test
+
 # API
 cd services/api && pnpm test
 

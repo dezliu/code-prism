@@ -1,0 +1,40 @@
+# LingPrism Next.js frontend (user | admin | monitor)
+# Build: docker build -f infra/docker/Dockerfile.frontend --build-arg APP=user --build-arg APP_PORT=3000 -t lingprism-user .
+ARG APP=user
+ARG APP_PORT=3000
+
+FROM node:20-alpine AS base
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+WORKDIR /app
+
+FROM base AS deps
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+RUN pnpm config set registry ${NPM_REGISTRY}
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
+COPY apps/ ./apps/
+COPY packages/ ./packages/
+RUN pnpm install --frozen-lockfile
+
+FROM deps AS build
+ARG APP
+ARG NEXT_PUBLIC_GRAPHQL_URL=http://localhost:8080/graphql
+ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:8080
+ENV NEXT_PUBLIC_GRAPHQL_URL=${NEXT_PUBLIC_GRAPHQL_URL}
+ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
+RUN pnpm --filter @lingprism/${APP} build
+
+FROM base AS runner
+ARG APP
+ARG APP_PORT
+WORKDIR /app
+ENV NODE_ENV=production
+RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
+COPY --from=build /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml ./
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/packages ./packages
+COPY --from=build /app/apps/${APP} ./apps/${APP}
+USER nextjs
+WORKDIR /app/apps/${APP}
+EXPOSE ${APP_PORT}
+ENV PORT=${APP_PORT}
+CMD ["pnpm", "start"]

@@ -1,0 +1,24 @@
+# LingPrism Core — Go HTTP + gRPC
+# Build: docker build -f infra/docker/Dockerfile.core -t lingprism-core .
+FROM golang:1.22-alpine AS builder
+# Default to CN-friendly proxy; override: --build-arg GOPROXY=https://proxy.golang.org,direct
+ARG GOPROXY=https://goproxy.cn,direct
+ENV GOPROXY=${GOPROXY}
+RUN apk add --no-cache git ca-certificates
+WORKDIR /src
+COPY services/core/go.mod services/core/go.sum ./
+RUN go mod download
+COPY services/core/ ./
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /lingprism-core ./cmd/server
+
+FROM alpine:3.20
+RUN apk add --no-cache ca-certificates wget
+RUN addgroup -S lingprism && adduser -S lingprism -G lingprism
+COPY --from=builder /lingprism-core /usr/local/bin/lingprism-core
+USER lingprism
+EXPOSE 8080 50051
+ENV CORE_HTTP_PORT=8080
+ENV CORE_GRPC_PORT=50051
+HEALTHCHECK --interval=15s --timeout=5s --retries=3 \
+  CMD wget -qO- http://127.0.0.1:8080/health || exit 1
+CMD ["lingprism-core"]

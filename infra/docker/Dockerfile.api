@@ -1,0 +1,35 @@
+# LingPrism API — GraphQL gateway + SSE chat routes
+# Build: docker build -f infra/docker/Dockerfile.api -t lingprism-api .
+FROM node:20-alpine AS base
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+WORKDIR /app
+
+FROM base AS deps
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+RUN pnpm config set registry ${NPM_REGISTRY}
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY services/api/package.json ./services/api/
+RUN pnpm install --frozen-lockfile --filter @lingprism/api
+
+FROM deps AS build
+COPY tsconfig.base.json ./
+COPY services/api/ ./services/api/
+RUN pnpm --filter @lingprism/api build
+
+FROM node:20-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+RUN apk add --no-cache wget \
+  && addgroup --system --gid 1001 nodejs \
+  && adduser --system --uid 1001 api
+# pnpm workspace: deps live under services/api/node_modules with symlinks to /app/node_modules/.pnpm
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=build /app/services/api/dist ./services/api/dist
+COPY --from=build /app/services/api/package.json ./services/api/package.json
+COPY --from=deps /app/services/api/node_modules ./services/api/node_modules
+RUN test -f /app/services/api/dist/index.js
+USER api
+WORKDIR /app/services/api
+EXPOSE 4000
+ENV API_PORT=4000
+CMD ["node", "dist/index.js"]

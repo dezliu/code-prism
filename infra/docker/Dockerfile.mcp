@@ -1,0 +1,30 @@
+# LingPrism MCP — MCP 2025 Streamable HTTP
+# Build: docker build -f infra/docker/Dockerfile.mcp -t lingprism-mcp .
+FROM python:3.11-slim AS base
+WORKDIR /app
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+FROM base AS builder
+ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+ENV PIP_INDEX_URL=${PIP_INDEX_URL}
+RUN pip install --no-cache-dir hatchling
+COPY services/mcp/pyproject.toml ./
+COPY services/mcp/server ./server
+COPY services/mcp/tools ./tools
+COPY services/mcp/clients ./clients
+RUN pip install --no-cache-dir .
+
+FROM base AS runner
+RUN addgroup --system app && adduser --system --ingroup app app
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+COPY services/mcp/server ./server
+COPY services/mcp/tools ./tools
+COPY services/mcp/clients ./clients
+USER app
+EXPOSE 8090
+ENV MCP_PORT=8090
+HEALTHCHECK --interval=15s --timeout=5s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health')"
+CMD ["lingprism-mcp"]
