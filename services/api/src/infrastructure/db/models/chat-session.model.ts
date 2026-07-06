@@ -20,6 +20,10 @@ export class ChatSessionModel extends BaseModel {
   createdAt!: Date;
   updatedAt!: Date;
 
+  static get jsonAttributes() {
+    return ['anchor'];
+  }
+
   static get relationMappings() {
     return {
       messages: {

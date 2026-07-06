@@ -25,4 +25,8 @@ export class QaTemplateModel extends BaseModel {
   createdBy!: string | null;
   createdAt!: Date;
   updatedAt!: Date;
+
+  static get jsonAttributes() {
+    return ['questionTypes', 'keywords', 'outputFields', 'applicableRoles'];
+  }
 }

@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from chains.doc_gen import generate_doc_content
 from chains.qa_router import stream_qa_with_rag
 from infrastructure.config import load_env
 from infrastructure.llm.streaming import is_cancelled, request_cancel
@@ -74,10 +75,30 @@ async def chat_stream(body: ChatStreamRequest) -> StreamingResponse:
     )
 
 
+class DocGenerateRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    title: str = Field(min_length=1)
+    doc_type: str = Field(default="training", alias="docType")
+    repo_names: list[str] = Field(default_factory=list, alias="repoNames")
+    context: str = ""
+
+
 class StopRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     stream_id: str = Field(alias="streamId")
+
+
+@app.post("/internal/doc/generate")
+def doc_generate(body: DocGenerateRequest) -> dict[str, str]:
+    content = generate_doc_content(
+        title=body.title,
+        doc_type=body.doc_type,
+        repo_names=body.repo_names,
+        context=body.context,
+    )
+    return {"content": content}
 
 
 @app.post("/internal/chat/stop")

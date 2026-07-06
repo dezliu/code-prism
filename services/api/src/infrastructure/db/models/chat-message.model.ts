@@ -20,4 +20,8 @@ export class ChatMessageModel extends BaseModel {
   sources!: MessageSource[] | null;
   interrupted!: boolean;
   createdAt!: Date;
+
+  static get jsonAttributes() {
+    return ['sources'];
+  }
 }

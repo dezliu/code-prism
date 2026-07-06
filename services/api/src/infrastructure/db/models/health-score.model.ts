@@ -10,4 +10,8 @@ export class HealthScoreModel extends BaseModel {
   score!: number;
   metrics!: Record<string, unknown>;
   calculatedAt!: Date;
+
+  static get jsonAttributes() {
+    return ['metrics'];
+  }
 }

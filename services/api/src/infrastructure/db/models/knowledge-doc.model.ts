@@ -17,4 +17,8 @@ export class KnowledgeDocModel extends BaseModel {
   createdBy!: string | null;
   createdAt!: Date;
   updatedAt!: Date;
+
+  static get jsonAttributes() {
+    return ['repoIds'];
+  }
 }

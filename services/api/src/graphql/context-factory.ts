@@ -13,8 +13,11 @@ import {
 } from '../application/repo/repo.use-cases.js';
 import {
   ListKnowledgeDocsUseCase,
+  GetKnowledgeDocUseCase,
   CreateKnowledgeDocUseCase,
+  UpdateKnowledgeDocUseCase,
   PublishKnowledgeDocUseCase,
+  GenerateKnowledgeDocContentUseCase,
   GenerateTrainingDocUseCase,
 } from '../application/knowledge/knowledge.use-cases.js';
 import {
@@ -64,6 +67,7 @@ import {
   resolveCoreHttpBaseUrls,
   type CoreHttpClient,
 } from '../infrastructure/clients/core-http.client.js';
+import { createAiWorkerDocClient } from '../infrastructure/clients/ai-worker-doc.client.js';
 import { extractBearerToken, verifyAccessToken } from '../infrastructure/auth/jwt.js';
 import type { GraphQLContext } from './resolvers/index.js';
 
@@ -85,6 +89,7 @@ export function buildGraphQLContext(
   const chatRepo = new ChatRepository();
   const monitorRepo = new MonitorRepository();
   const core = deps?.coreClient ?? createCoreHttpClient(resolveCoreHttpBaseUrls());
+  const aiWorkerDoc = createAiWorkerDocClient(config);
 
   let auth: GraphQLContext['auth'] = null;
   const token = extractBearerToken(req.headers.authorization);
@@ -108,9 +113,22 @@ export function buildGraphQLContext(
     updateRepoUseCase: new UpdateRepoUseCase(repoRepo),
     deleteRepoUseCase: new DeleteRepoUseCase(repoRepo),
     listKnowledgeDocsUseCase: new ListKnowledgeDocsUseCase(knowledgeRepo),
+    getKnowledgeDocUseCase: new GetKnowledgeDocUseCase(knowledgeRepo),
     createKnowledgeDocUseCase: new CreateKnowledgeDocUseCase(knowledgeRepo),
+    updateKnowledgeDocUseCase: new UpdateKnowledgeDocUseCase(knowledgeRepo),
     publishKnowledgeDocUseCase: new PublishKnowledgeDocUseCase(knowledgeRepo),
-    generateTrainingDocUseCase: new GenerateTrainingDocUseCase(knowledgeRepo, core),
+    generateKnowledgeDocContentUseCase: new GenerateKnowledgeDocContentUseCase(
+      knowledgeRepo,
+      repoRepo,
+      core,
+      aiWorkerDoc,
+    ),
+    generateTrainingDocUseCase: new GenerateTrainingDocUseCase(
+      knowledgeRepo,
+      repoRepo,
+      core,
+      aiWorkerDoc,
+    ),
     listChatSessionsUseCase: new ListChatSessionsUseCase(chatRepo),
     createChatSessionUseCase: new CreateChatSessionUseCase(chatRepo),
     getChatMessagesUseCase: new GetChatMessagesUseCase(chatRepo),

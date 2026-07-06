@@ -2,7 +2,7 @@ import { GraphQLScalarType } from 'graphql';
 import type { LoginUseCase } from '../../application/auth/login.js';
 import type { GetCurrentUserUseCase } from '../../application/auth/get-current-user.js';
 import type { ListReposUseCase, CreateRepoUseCase, TestRepoConnectionUseCase, UpdateRepoMetadataUseCase, UpdateRepoUseCase, DeleteRepoUseCase } from '../../application/repo/repo.use-cases.js';
-import type { ListKnowledgeDocsUseCase, CreateKnowledgeDocUseCase, PublishKnowledgeDocUseCase, GenerateTrainingDocUseCase } from '../../application/knowledge/knowledge.use-cases.js';
+import type { ListKnowledgeDocsUseCase, GetKnowledgeDocUseCase, CreateKnowledgeDocUseCase, UpdateKnowledgeDocUseCase, PublishKnowledgeDocUseCase, GenerateKnowledgeDocContentUseCase, GenerateTrainingDocUseCase } from '../../application/knowledge/knowledge.use-cases.js';
 import type {
   ListChatSessionsUseCase,
   CreateChatSessionUseCase,
@@ -53,8 +53,11 @@ export interface GraphQLContext {
   updateRepoUseCase: UpdateRepoUseCase;
   deleteRepoUseCase: DeleteRepoUseCase;
   listKnowledgeDocsUseCase: ListKnowledgeDocsUseCase;
+  getKnowledgeDocUseCase: GetKnowledgeDocUseCase;
   createKnowledgeDocUseCase: CreateKnowledgeDocUseCase;
+  updateKnowledgeDocUseCase: UpdateKnowledgeDocUseCase;
   publishKnowledgeDocUseCase: PublishKnowledgeDocUseCase;
+  generateKnowledgeDocContentUseCase: GenerateKnowledgeDocContentUseCase;
   generateTrainingDocUseCase: GenerateTrainingDocUseCase;
   listChatSessionsUseCase: ListChatSessionsUseCase;
   createChatSessionUseCase: CreateChatSessionUseCase;
@@ -145,6 +148,15 @@ export function createResolvers() {
         withHandler(() => {
           requireAuth(ctx);
           return ctx.listKnowledgeDocsUseCase.execute();
+        }),
+      knowledgeDoc: (_: unknown, args: { id: string }, ctx: GraphQLContext) =>
+        withHandler(async () => {
+          requireAuth(ctx);
+          try {
+            return await ctx.getKnowledgeDocUseCase.execute(args.id);
+          } catch {
+            return null;
+          }
         }),
       chatSessions: (_: unknown, __: unknown, ctx: GraphQLContext) =>
         withHandler(() => {
@@ -267,6 +279,20 @@ export function createResolvers() {
         withHandler(() => {
           requireAdmin(ctx);
           return ctx.publishKnowledgeDocUseCase.execute(args.id);
+        }),
+      updateKnowledgeDoc: (
+        _: unknown,
+        args: { id: string; input: Parameters<UpdateKnowledgeDocUseCase['execute']>[1] },
+        ctx: GraphQLContext,
+      ) =>
+        withHandler(() => {
+          requireAdmin(ctx);
+          return ctx.updateKnowledgeDocUseCase.execute(args.id, args.input);
+        }),
+      generateKnowledgeDocContent: (_: unknown, args: { id: string }, ctx: GraphQLContext) =>
+        withHandler(() => {
+          requireAdmin(ctx);
+          return ctx.generateKnowledgeDocContentUseCase.execute(args.id);
         }),
       generateTrainingDoc: (_: unknown, args: { repoId: string }, ctx: GraphQLContext) =>
         withHandler(() => {

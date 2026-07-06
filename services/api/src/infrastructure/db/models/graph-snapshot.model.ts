@@ -32,4 +32,8 @@ export class GraphSnapshotModel extends BaseModel {
   versionNote!: string | null;
   publishedAt!: Date | null;
   createdAt!: Date;
+
+  static get jsonAttributes() {
+    return ['graphData'];
+  }
 }

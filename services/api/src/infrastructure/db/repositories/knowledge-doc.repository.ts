@@ -9,6 +9,13 @@ export interface CreateKnowledgeDocInput {
   createdBy?: string;
 }
 
+export interface UpdateKnowledgeDocInput {
+  title?: string;
+  docType?: DocType;
+  content?: string;
+  repoIds?: string[];
+}
+
 export class KnowledgeDocRepository {
   async listAll(): Promise<KnowledgeDocModel[]> {
     return KnowledgeDocModel.query().orderBy('updated_at', 'desc');
@@ -24,7 +31,7 @@ export class KnowledgeDocRepository {
       id,
       title: input.title.trim(),
       docType: input.docType,
-      status: 'draft',
+      status: 'draft' as const,
       content: input.content ?? '',
       repoIds: input.repoIds ?? [],
       createdBy: input.createdBy ?? null,
