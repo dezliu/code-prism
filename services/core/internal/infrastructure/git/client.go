@@ -81,10 +81,8 @@ func (c *Client) Sync(ctx context.Context, repoID, repoURL, branch string) (Sync
 		}
 	} else if err != nil {
 		return SyncResult{}, fmt.Errorf("stat local mirror: %w", err)
-	} else {
-		if err := c.pullMirror(ctx, target, branch); err != nil {
-			return SyncResult{}, err
-		}
+	} else if err := c.syncLocalMirror(ctx, target, repoURL, branch); err != nil {
+		return SyncResult{}, err
 	}
 
 	headHash, lastAt, summary := c.readHead(ctx, target)
@@ -97,6 +95,18 @@ func (c *Client) Sync(ctx context.Context, repoID, repoURL, branch string) (Sync
 		LastCommitSummary: summary,
 		LanguageSummary:   langSummary,
 	}, nil
+}
+
+// syncLocalMirror uses the existing local mirror and pulls only when remote has new commits.
+// If the remote cannot be reached, local code is kept so offline doc generation still works.
+func (c *Client) syncLocalMirror(ctx context.Context, target, repoURL, branch string) error {
+	localHash, _, _ := c.readHead(ctx, target)
+	remoteHash, remoteErr := c.HeadRemote(ctx, repoURL, branch)
+	if remoteErr != nil || localHash == remoteHash {
+		return nil
+	}
+	_ = c.pullMirror(ctx, target, branch)
+	return nil
 }
 
 func (c *Client) HeadRemote(ctx context.Context, repoURL, branch string) (string, error) {

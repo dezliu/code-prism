@@ -1,4 +1,27 @@
 import type { ApiConfig } from '../../config.js';
+import { ApplicationError } from '../../domain/errors.js';
+
+function isAiWorkerUnreachable(err: unknown): boolean {
+  if (!(err instanceof Error)) {
+    return false;
+  }
+  if (err.message === 'fetch failed') {
+    return true;
+  }
+  const cause = 'cause' in err ? (err.cause as NodeJS.ErrnoException | undefined) : undefined;
+  return cause?.code === 'ECONNREFUSED' || cause?.code === 'ENOTFOUND';
+}
+
+function wrapAiWorkerFetchError(config: ApiConfig, err: unknown): never {
+  if (isAiWorkerUnreachable(err)) {
+    throw new ApplicationError(
+      `AI Worker 服务未启动（无法连接 ${config.aiWorkerUrl}）。请运行: cd services/ai-worker && source .venv/bin/activate && lingprism-ai-http`,
+      'SERVICE_UNAVAILABLE',
+      err,
+    );
+  }
+  throw err instanceof Error ? err : new Error(String(err));
+}
 
 export interface ChatStreamRequest {
   message: string;
@@ -44,17 +67,22 @@ export class AiWorkerHttpStreamClient implements AiWorkerStreamClient {
 
   async *streamChat(request: ChatStreamRequest): AsyncGenerator<SseEvent, void, unknown> {
     const url = `${this.config.aiWorkerUrl.replace(/\/$/, '')}/internal/chat/stream`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: request.message,
-        streamId: request.streamId,
-        sessionId: request.sessionId,
-        userId: request.userId,
-        sessionContext: request.sessionContext,
-      }),
-    });
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: request.message,
+          streamId: request.streamId,
+          sessionId: request.sessionId,
+          userId: request.userId,
+          sessionContext: request.sessionContext,
+        }),
+      });
+    } catch (err) {
+      wrapAiWorkerFetchError(this.config, err);
+    }
 
     if (!response.ok) {
       const body = await response.text();
@@ -70,17 +98,22 @@ export class AiWorkerHttpStreamClient implements AiWorkerStreamClient {
 
   async *streamGenerateDoc(request: DocStreamRequest): AsyncGenerator<SseEvent, void, unknown> {
     const url = `${this.config.aiWorkerUrl.replace(/\/$/, '')}/internal/doc/generate/stream`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        streamId: request.streamId,
-        title: request.title,
-        docType: request.docType,
-        repoNames: request.repoNames,
-        context: request.context,
-      }),
-    });
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          streamId: request.streamId,
+          title: request.title,
+          docType: request.docType,
+          repoNames: request.repoNames,
+          context: request.context,
+        }),
+      });
+    } catch (error) {
+      wrapAiWorkerFetchError(this.config, error);
+    }
 
     if (!response.ok) {
       const body = await response.text();

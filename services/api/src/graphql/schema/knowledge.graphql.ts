@@ -18,6 +18,23 @@ export const knowledgeTypeDefs = /* GraphQL */ `
     repoIds: [String!]
   }
 
+  type DocGenerateJob {
+    id: ID!
+    itemId: ID!
+    itemTitle: String!
+    knowledgeBaseId: ID!
+    knowledgeBaseTitle: String
+    title: String!
+    docType: String!
+    status: String!
+    phase: String
+    errorMessage: String
+    content: String
+    createdAt: String!
+    startedAt: String
+    completedAt: String
+  }
+
   """ @deprecated 请使用 KnowledgeDocItem """
   type KnowledgeDoc {
     id: ID!
@@ -51,6 +68,12 @@ export const knowledgeTypeDefs = /* GraphQL */ `
     content: String
   }
 
+  input EnqueueDocGenerateJobInput {
+    itemId: ID!
+    title: String
+    docType: String
+  }
+
   """ @deprecated """
   input CreateKnowledgeDocInput {
     title: String!
@@ -73,6 +96,8 @@ export const knowledgeTypeDefs = /* GraphQL */ `
     knowledgeDocItem(id: ID!): KnowledgeDocItem
     knowledgeDocs: [KnowledgeDoc!]!
     knowledgeDoc(id: ID!): KnowledgeDoc
+    docGenerateJobs(status: String, limit: Int = 50): [DocGenerateJob!]!
+    docGenerateJob(id: ID!): DocGenerateJob
   }
 
   extend type Mutation {
@@ -84,6 +109,9 @@ export const knowledgeTypeDefs = /* GraphQL */ `
     publishKnowledgeDocItem(id: ID!): KnowledgeDocItem!
     updateKnowledgeDocItemIndex(itemId: ID!, indexedInSearch: Boolean!): KnowledgeDocItem!
     generateKnowledgeDocContent(id: ID!): KnowledgeDocItem!
+    enqueueDocGenerateJob(input: EnqueueDocGenerateJobInput!): DocGenerateJob!
+    cancelDocGenerateJob(id: ID!): DocGenerateJob!
+    applyDocGenerateJob(id: ID!): KnowledgeDocItem!
     createKnowledgeDoc(input: CreateKnowledgeDocInput!): KnowledgeDoc!
     updateKnowledgeDoc(id: ID!, input: UpdateKnowledgeDocInput!): KnowledgeDoc!
     publishKnowledgeDoc(id: ID!): KnowledgeDoc!

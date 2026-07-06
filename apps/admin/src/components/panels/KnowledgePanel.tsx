@@ -1,11 +1,14 @@
 'use client';
 
 import {
-  Button, Card, Drawer, Form, Input, Modal, Select, Space, Switch, Table, Tag, message,
+  Badge, Button, Card, Drawer, Form, Input, Modal, Select, Space, Switch, Table, Tag, message,
 } from 'antd';
-import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { enqueueDocGenerateJob } from '@lingprism/graphql';
 import { gql } from '../../lib/gql';
 import { DocGenerateProgressModal } from '../DocGenerateProgressModal';
+import { useDocGenerateJobActions } from '../DocGenerateJobShell';
 import { MarkdownEditor } from '../MarkdownEditor';
 
 interface KnowledgeBaseRow {
@@ -45,6 +48,8 @@ const DOC_TYPE_LABEL: Record<string, string> = Object.fromEntries(
 );
 
 export function KnowledgePanel() {
+  const searchParams = useSearchParams();
+  const jobActions = useDocGenerateJobActions();
   const [bases, setBases] = useState<KnowledgeBaseRow[]>([]);
   const [repos, setRepos] = useState<RepoOption[]>([]);
   const [loading, setLoading] = useState(false);
@@ -107,6 +112,63 @@ export function KnowledgePanel() {
     loadRepos();
     loadBases();
   }, []);
+
+  const handledParamsRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const editItemId = searchParams.get('editItem');
+    const jobId = searchParams.get('jobId');
+    const prefill = searchParams.get('prefill');
+    const paramKey = `${editItemId ?? ''}:${jobId ?? ''}:${prefill ?? ''}`;
+    if (handledParamsRef.current === paramKey) {
+      return;
+    }
+    if (!editItemId && !jobId) {
+      return;
+    }
+    handledParamsRef.current = paramKey;
+
+    if (jobId && jobActions) {
+      void jobActions.openJobDetail(jobId);
+    }
+
+    if (editItemId) {
+      void (async () => {
+        try {
+          const data = await gql<{ knowledgeDocItem: KnowledgeDocItem | null }>(`
+            query($id: ID!) {
+              knowledgeDocItem(id: $id) {
+                id knowledgeBaseId title status docType indexedInSearch content
+              }
+            }
+          `, { id: editItemId });
+          const item = data.knowledgeDocItem;
+          if (!item) {
+            return;
+          }
+          const base = bases.find((b) => b.id === item.knowledgeBaseId);
+          if (base) {
+            setActiveBase(base);
+            void loadBaseDetail(base.id);
+          }
+          const prefillContent = prefill === '1'
+            ? sessionStorage.getItem(`doc-prefill-${editItemId}`) ?? undefined
+            : undefined;
+          if (prefillContent) {
+            sessionStorage.removeItem(`doc-prefill-${editItemId}`);
+          }
+          setEditItem(item);
+          editItemForm.setFieldsValue({
+            title: item.title,
+            docType: item.docType,
+            content: prefillContent ?? item.content ?? '',
+          });
+        } catch (error) {
+          message.error(error instanceof Error ? error.message : '加载文档失败');
+        }
+      })();
+    }
+  }, [searchParams, jobActions, bases, editItemForm]);
 
   const openBaseDetail = async (row: KnowledgeBaseRow) => {
     setActiveBase(row);
@@ -200,7 +262,10 @@ export function KnowledgePanel() {
     }
   };
 
-  const openEditItem = async (row: KnowledgeDocItem) => {
+  const openEditItem = async (
+    row: KnowledgeDocItem,
+    options?: { prefilledContent?: string },
+  ) => {
     try {
       const data = await gql<{ knowledgeDocItem: KnowledgeDocItem | null }>(`
         query($id: ID!) {
@@ -215,7 +280,7 @@ export function KnowledgePanel() {
       editItemForm.setFieldsValue({
         title: data.knowledgeDocItem.title,
         docType: data.knowledgeDocItem.docType,
-        content: data.knowledgeDocItem.content ?? '',
+        content: options?.prefilledContent ?? data.knowledgeDocItem.content ?? '',
       });
     } catch (error) {
       message.error(error instanceof Error ? error.message : '加载详情失败');
@@ -298,6 +363,26 @@ export function KnowledgePanel() {
     setGenerateModalOpen(true);
   };
 
+  const onBackgroundGenerate = async () => {
+    if (!editItem) return;
+    if (!activeBase?.repoIds?.length) {
+      message.warning('请先为知识库关联至少一个 Git 仓库');
+      return;
+    }
+    try {
+      await enqueueDocGenerateJob({
+        itemId: editItem.id,
+        title: editItemForm.getFieldValue('title'),
+        docType: editItemForm.getFieldValue('docType'),
+      });
+      message.success('已提交后台生成任务，完成后将通知您');
+      jobActions?.refreshJobs();
+      setEditItem(null);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '提交失败');
+    }
+  };
+
   const onApplyGeneratedContent = (content: string) => {
     editItemForm.setFieldValue('content', content);
     setGenerateModalOpen(false);
@@ -313,7 +398,12 @@ export function KnowledgePanel() {
           title="知识库列表"
           className="admin-panel-inner"
           extra={(
-            <Button type="primary" onClick={() => setCreateBaseOpen(true)}>新增知识库</Button>
+            <Space>
+              <Badge count={jobActions?.activeCount ?? 0} size="small">
+                <Button onClick={() => jobActions?.openJobList()}>后台任务</Button>
+              </Badge>
+              <Button type="primary" onClick={() => setCreateBaseOpen(true)}>新增知识库</Button>
+            </Space>
           )}
         >
           <Table
@@ -499,6 +589,7 @@ export function KnowledgePanel() {
               <Button onClick={() => editItem && onPublishItem(editItem.id)}>发布</Button>
             )}
             <Button onClick={onGenerateContent}>从代码生成文档</Button>
+            <Button onClick={() => void onBackgroundGenerate()}>后台生成</Button>
             <Button type="primary" loading={saving} onClick={onSaveItem}>保存</Button>
           </Space>
         )}

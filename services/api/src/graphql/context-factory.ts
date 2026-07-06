@@ -31,6 +31,15 @@ import {
   GenerateTrainingDocUseCase,
 } from '../application/knowledge/knowledge.use-cases.js';
 import {
+  RunDocGenerateJobUseCase,
+  EnqueueDocGenerateJobUseCase,
+  ListDocGenerateJobsUseCase,
+  GetDocGenerateJobUseCase,
+  CancelDocGenerateJobUseCase,
+  ApplyDocGenerateJobUseCase,
+  FailStaleDocGenerateJobsUseCase,
+} from '../application/knowledge/doc-generate-job.use-cases.js';
+import {
   ListChatSessionsUseCase,
   CreateChatSessionUseCase,
   DeleteChatSessionUseCase,
@@ -80,18 +89,29 @@ import {
   type CoreHttpClient,
 } from '../infrastructure/clients/core-http.client.js';
 import { createAiWorkerDocClient } from '../infrastructure/clients/ai-worker-doc.client.js';
+import {
+  AiWorkerHttpStreamClient,
+  type AiWorkerStreamClient,
+} from '../infrastructure/clients/ai-worker.client.js';
+import {
+  RedisStreamCancelStore,
+  type StreamCancelStore,
+} from '../infrastructure/clients/stream-cancel.store.js';
+import { DocGenerateJobRepository } from '../infrastructure/db/repositories/doc-generate-job.repository.js';
 import { extractBearerToken, verifyAccessToken } from '../infrastructure/auth/jwt.js';
 import type { GraphQLContext } from './resolvers/index.js';
 
 export interface GraphQLContextDeps {
   config: ApiConfig;
   coreClient?: CoreHttpClient;
+  aiWorkerStreamClient?: AiWorkerStreamClient;
+  cancelStore?: StreamCancelStore;
 }
 
 export function buildGraphQLContext(
   config: ApiConfig,
   req: express.Request,
-  deps?: Pick<GraphQLContextDeps, 'coreClient'>,
+  deps?: GraphQLContextDeps,
 ): GraphQLContext {
   const userRepo = new UserRepository();
   const repoRepo = new RepoRepository();
@@ -102,6 +122,17 @@ export function buildGraphQLContext(
   const monitorRepo = new MonitorRepository();
   const core = deps?.coreClient ?? createCoreHttpClient(resolveCoreHttpBaseUrls());
   const aiWorkerDoc = createAiWorkerDocClient(config);
+  const aiWorkerStream = deps?.aiWorkerStreamClient ?? new AiWorkerHttpStreamClient(config);
+  const cancelStore = deps?.cancelStore ?? new RedisStreamCancelStore(config);
+  const docGenerateJobRepo = new DocGenerateJobRepository();
+  const runDocGenerateJobUseCase = new RunDocGenerateJobUseCase(
+    docGenerateJobRepo,
+    knowledgeRepo,
+    repoRepo,
+    core,
+    aiWorkerStream,
+    cancelStore,
+  );
 
   let auth: GraphQLContext['auth'] = null;
   const token = extractBearerToken(req.headers.authorization);
@@ -151,6 +182,19 @@ export function buildGraphQLContext(
       core,
       aiWorkerDoc,
     ),
+    enqueueDocGenerateJobUseCase: new EnqueueDocGenerateJobUseCase(
+      docGenerateJobRepo,
+      knowledgeRepo,
+      runDocGenerateJobUseCase,
+    ),
+    listDocGenerateJobsUseCase: new ListDocGenerateJobsUseCase(docGenerateJobRepo, knowledgeRepo),
+    getDocGenerateJobUseCase: new GetDocGenerateJobUseCase(docGenerateJobRepo, knowledgeRepo),
+    cancelDocGenerateJobUseCase: new CancelDocGenerateJobUseCase(
+      docGenerateJobRepo,
+      knowledgeRepo,
+      cancelStore,
+    ),
+    applyDocGenerateJobUseCase: new ApplyDocGenerateJobUseCase(docGenerateJobRepo, knowledgeRepo),
     listChatSessionsUseCase: new ListChatSessionsUseCase(chatRepo),
     createChatSessionUseCase: new CreateChatSessionUseCase(chatRepo),
     deleteChatSessionUseCase: new DeleteChatSessionUseCase(chatRepo),

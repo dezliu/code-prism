@@ -4,6 +4,13 @@ import type { GetCurrentUserUseCase } from '../../application/auth/get-current-u
 import type { ListReposUseCase, CreateRepoUseCase, TestRepoConnectionUseCase, UpdateRepoMetadataUseCase, UpdateRepoUseCase, DeleteRepoUseCase } from '../../application/repo/repo.use-cases.js';
 import type { ListKnowledgeBasesUseCase, GetKnowledgeBaseUseCase, CreateKnowledgeBaseUseCase, UpdateKnowledgeBaseUseCase, DeleteKnowledgeBaseUseCase, GetKnowledgeDocItemUseCase, CreateKnowledgeDocItemUseCase, UpdateKnowledgeDocItemUseCase, PublishKnowledgeDocItemUseCase, UpdateKnowledgeDocItemIndexUseCase, ListKnowledgeDocsUseCase, GetKnowledgeDocUseCase, CreateKnowledgeDocUseCase, UpdateKnowledgeDocUseCase, PublishKnowledgeDocUseCase, GenerateKnowledgeDocContentUseCase, GenerateTrainingDocUseCase } from '../../application/knowledge/knowledge.use-cases.js';
 import type {
+  EnqueueDocGenerateJobUseCase,
+  ListDocGenerateJobsUseCase,
+  GetDocGenerateJobUseCase,
+  CancelDocGenerateJobUseCase,
+  ApplyDocGenerateJobUseCase,
+} from '../../application/knowledge/doc-generate-job.use-cases.js';
+import type {
   ListChatSessionsUseCase,
   CreateChatSessionUseCase,
   DeleteChatSessionUseCase,
@@ -71,6 +78,11 @@ export interface GraphQLContext {
   publishKnowledgeDocUseCase: PublishKnowledgeDocUseCase;
   generateKnowledgeDocContentUseCase: GenerateKnowledgeDocContentUseCase;
   generateTrainingDocUseCase: GenerateTrainingDocUseCase;
+  enqueueDocGenerateJobUseCase: EnqueueDocGenerateJobUseCase;
+  listDocGenerateJobsUseCase: ListDocGenerateJobsUseCase;
+  getDocGenerateJobUseCase: GetDocGenerateJobUseCase;
+  cancelDocGenerateJobUseCase: CancelDocGenerateJobUseCase;
+  applyDocGenerateJobUseCase: ApplyDocGenerateJobUseCase;
   listChatSessionsUseCase: ListChatSessionsUseCase;
   createChatSessionUseCase: CreateChatSessionUseCase;
   deleteChatSessionUseCase: DeleteChatSessionUseCase;
@@ -191,6 +203,24 @@ export function createResolvers() {
           requireAuth(ctx);
           try {
             return await ctx.getKnowledgeDocUseCase.execute(args.id);
+          } catch {
+            return null;
+          }
+        }),
+      docGenerateJobs: (
+        _: unknown,
+        args: { status?: string; limit?: number },
+        ctx: GraphQLContext,
+      ) =>
+        withHandler(() => {
+          requireAdmin(ctx);
+          return ctx.listDocGenerateJobsUseCase.execute(args);
+        }),
+      docGenerateJob: (_: unknown, args: { id: string }, ctx: GraphQLContext) =>
+        withHandler(async () => {
+          requireAdmin(ctx);
+          try {
+            return await ctx.getDocGenerateJobUseCase.execute(args.id);
           } catch {
             return null;
           }
@@ -402,6 +432,28 @@ export function createResolvers() {
         withHandler(() => {
           requireAdmin(ctx);
           return ctx.generateKnowledgeDocContentUseCase.execute(args.id);
+        }),
+      enqueueDocGenerateJob: (
+        _: unknown,
+        args: { input: { itemId: string; title?: string; docType?: string } },
+        ctx: GraphQLContext,
+      ) =>
+        withHandler(() => {
+          const auth = requireAdmin(ctx);
+          return ctx.enqueueDocGenerateJobUseCase.execute({
+            ...args.input,
+            createdBy: auth.userId,
+          });
+        }),
+      cancelDocGenerateJob: (_: unknown, args: { id: string }, ctx: GraphQLContext) =>
+        withHandler(() => {
+          requireAdmin(ctx);
+          return ctx.cancelDocGenerateJobUseCase.execute(args.id);
+        }),
+      applyDocGenerateJob: (_: unknown, args: { id: string }, ctx: GraphQLContext) =>
+        withHandler(() => {
+          requireAdmin(ctx);
+          return ctx.applyDocGenerateJobUseCase.execute(args.id);
         }),
       generateTrainingDoc: (_: unknown, args: { repoId: string }, ctx: GraphQLContext) =>
         withHandler(() => {

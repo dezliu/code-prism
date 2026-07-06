@@ -1,10 +1,23 @@
 import { loadConfig } from './config.js';
 import { createKnex } from './infrastructure/db/knex.js';
+import { FailStaleDocGenerateJobsUseCase } from './application/knowledge/doc-generate-job.use-cases.js';
+import { DocGenerateJobRepository } from './infrastructure/db/repositories/doc-generate-job.repository.js';
 import { startHttpServer } from './infrastructure/http/server.js';
 
 async function main(): Promise<void> {
   const config = loadConfig();
   createKnex(config.databaseUrl);
+
+  const staleJobs = new FailStaleDocGenerateJobsUseCase(new DocGenerateJobRepository());
+  try {
+    const staleCount = await staleJobs.execute();
+    if (staleCount > 0) {
+      // eslint-disable-next-line no-console
+      console.log(JSON.stringify({ level: 'info', msg: 'marked stale doc generate jobs as failed', count: staleCount }));
+    }
+  } catch {
+    // migration may not have run yet
+  }
 
   const { app, port } = await startHttpServer({ config });
 

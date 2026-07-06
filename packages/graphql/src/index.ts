@@ -5,6 +5,14 @@ export { LingPrismApolloProvider } from './apollo-provider';
 export { loginWithCredentials, fetchCurrentUser, logout } from './auth-api';
 export { useChatSSE } from './use-chat-sse';
 export { useDocGenerateSSE } from './use-doc-generate-sse';
+export {
+  fetchDocGenerateJobs,
+  fetchDocGenerateJob,
+  enqueueDocGenerateJob,
+  cancelDocGenerateJob,
+  applyDocGenerateJob,
+  useDocGenerateJobPoll,
+} from './use-doc-generate-jobs';
 export type { AuthUser, LoginResponse } from '@lingprism/shared';
 export type {
   ChatSSEEvent,
@@ -19,3 +27,4 @@ export type {
   DocGenerateStatus,
   UseDocGenerateSSEReturn,
 } from './use-doc-generate-sse';
+export type { DocGenerateJob, UseDocGenerateJobPollOptions } from './use-doc-generate-jobs';
