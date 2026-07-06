@@ -1,0 +1,16 @@
+@import url('https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600&display=swap');
+
+:root {
+  --accent: #f97316;
+  --bg: #fff7ed;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Source Sans 3', -apple-system, sans-serif;
+  background: var(--bg);
+}

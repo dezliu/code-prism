@@ -1,0 +1,10 @@
+{
+  "name": "@lingprism/api",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "echo 'API service scaffold — Batch 1' && exit 0",
+    "build": "echo 'API service scaffold — Batch 1' && exit 0",
+    "lint": "echo 'API service scaffold — Batch 1' && exit 0"
+  }
+}
