@@ -20,7 +20,7 @@ def test_stream_qa_with_rag_emits_source_and_done():
     events = _collect("支付服务核心流程")
     event_names = [e[0] for e in events]
     assert "status" in event_names
-    assert "source" in event_names
+    assert "token" in event_names
     assert "done" in event_names
 
 

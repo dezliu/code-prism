@@ -8,6 +8,7 @@ from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 from chains.context_anchor import ContextAnchor, extract_anchor_from_answer, resolve_query
+from chains.rag_retrieval import retrieve_context
 from chains.template_match import match_templates
 from infrastructure.clients.core import CoreSearchClient
 from infrastructure.llm.factory import PlaceholderChatModel, create_chat_model
@@ -45,6 +46,54 @@ def _extract_text(chunk: Any) -> str:
     return str(content) if content is not None else ""
 
 
+def _format_context_lines(hits: list[dict[str, Any]]) -> list[str]:
+    lines: list[str] = []
+    for hit in hits[:8]:
+        ref = hit.get("ref")
+        ref_suffix = f" (引用: {ref})" if ref else ""
+        lines.append(
+            f"- [{hit.get('type', 'doc')}] {hit.get('title', '')}: "
+            f"{hit.get('snippet', '')}{ref_suffix}"
+        )
+    return lines
+
+
+def _format_retrieval_log(log: list[dict[str, str]]) -> str:
+    if not log:
+        return "（无）"
+    return "\n".join(f"- [{entry['strategy']}] {entry['query']}" for entry in log)
+
+
+def _build_no_context_fallback(
+    resolved_message: str,
+    retrieval_log: list[dict[str, str]],
+    *,
+    llm_configured: bool,
+) -> str:
+    tried = [entry["query"] for entry in retrieval_log]
+    tried_text = "、".join(tried[:5])
+    if len(tried) > 5:
+        tried_text += f" 等 {len(tried)} 种"
+
+    lines = [
+        f"关于「{resolved_message}」：",
+        "",
+        f"已在代码索引与知识文档中多轮检索（{tried_text}），暂未找到相关内容。",
+        "",
+        "可能原因：",
+        "1. 对应仓库/文档尚未同步或未完成索引",
+        "2. 问题中的实体名与索引中的命名不一致",
+        "3. 知识库中确实尚无该主题的文档或代码片段",
+        "",
+        "建议：",
+        "- 在管理后台确认目标仓库已同步并完成索引",
+        "- 换用更具体的关键词（模块名、文件名、接口名）重试",
+    ]
+    if not llm_configured:
+        lines.append("- 配置 ZHIPU_API_KEY 后可启用 AI 扩写检索与深度回答")
+    return "\n".join(lines)
+
+
 async def stream_qa_with_rag(
     message: str,
     *,
@@ -62,14 +111,30 @@ async def stream_qa_with_rag(
 
     yield "status", {"phase": "understanding", "intents": intents}
 
-    for hint in match_templates(resolved_message, templates=session_context.get("qaTemplates") if session_context else None):
+    for hint in match_templates(
+        resolved_message,
+        templates=session_context.get("qaTemplates") if session_context else None,
+    ):
         yield "template_hint", hint
 
     yield "status", {"phase": "retrieving"}
     repo_ids = [anchor.repo_id] if anchor and anchor.repo_id else None
-    hits = await client.search(resolved_message, repo_ids=repo_ids)
+    expand_model = create_chat_model("intent")
+    hits, retrieval_log = await retrieve_context(
+        client,
+        resolved_message,
+        repo_ids=repo_ids,
+        expand_model=expand_model,
+    )
 
-    for hit in hits[:3]:
+    if retrieval_log:
+        yield "status", {
+            "phase": "retrieving",
+            "attempts": len(retrieval_log),
+            "strategies": list(dict.fromkeys(entry["strategy"] for entry in retrieval_log)),
+        }
+
+    for hit in hits[:5]:
         yield "source", {
             "type": hit.get("type", "doc"),
             "title": hit.get("title", ""),
@@ -78,22 +143,27 @@ async def stream_qa_with_rag(
 
     yield "status", {"phase": "generating"}
 
-    context_lines = []
-    for hit in hits[:5]:
-        context_lines.append(f"- [{hit.get('type')}] {hit.get('title')}: {hit.get('snippet')}")
+    context_lines = _format_context_lines(hits)
     history_lines = []
     for msg in recent[-4:]:
         role = msg.get("role", "user")
         content = msg.get("content", "")
         history_lines.append(f"{role}: {content}")
 
+    retrieval_section = _format_retrieval_log(retrieval_log)
+    has_context = bool(context_lines)
+
     prompt = (
-        "你是灵镜(LingPrism)企业知识助手。根据检索上下文与对话历史回答用户问题。\n"
-        "若信息不足，明确说明并给出建议。\n\n"
+        "你是灵镜(LingPrism)企业知识助手。请基于检索到的企业知识上下文回答用户问题。\n"
+        "要求：\n"
+        "1. 优先引用检索上下文中的事实，标注来源类型（code/doc/repo）\n"
+        "2. 若上下文不足，明确说明缺失信息，不要编造\n"
+        "3. 给出可执行的下一步建议（如需要同步哪个仓库、补充哪类文档）\n\n"
         f"问题类型：{', '.join(intents)}\n"
         f"当前锚点：{anchor.entity_name if anchor else '无'}\n\n"
+        f"检索过程（共 {len(retrieval_log)} 轮）：\n{retrieval_section}\n\n"
         "检索上下文：\n"
-        f"{chr(10).join(context_lines) or '（无检索结果）'}\n\n"
+        f"{chr(10).join(context_lines) if has_context else '（多轮检索后仍无有效命中）'}\n\n"
         "对话历史：\n"
         f"{chr(10).join(history_lines) or '（无）'}\n\n"
         f"用户问题：{resolved_message}"
@@ -102,12 +172,20 @@ async def stream_qa_with_rag(
     model = create_chat_model("qa")
     cfg = resolve_llm_config("qa")
     if isinstance(model, PlaceholderChatModel):
-        fallback = (
-            f"基于检索结果回答：{resolved_message}\n\n"
-            + "\n".join(context_lines[:3])
-            if context_lines
-            else "未配置 LLM API Key，且暂无检索上下文。"
-        )
+        if has_context:
+            fallback = (
+                f"关于「{resolved_message}」：\n\n"
+                "根据知识库检索结果，整理如下：\n\n"
+                + "\n".join(context_lines[:5])
+                + "\n\n"
+                "（当前为占位模式，配置 ZHIPU_API_KEY 后可获得更完整的 AI 分析。）"
+            )
+        else:
+            fallback = _build_no_context_fallback(
+                resolved_message,
+                retrieval_log,
+                llm_configured=False,
+            )
         for char in fallback:
             if is_cancelled and is_cancelled():
                 yield "done", {"messageId": str(uuid.uuid4()), "interrupted": True}
