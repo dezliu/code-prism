@@ -5,6 +5,8 @@ import { knowledgeTypeDefs } from './knowledge.graphql.js';
 import { chatTypeDefs } from './chat.graphql.js';
 import { monitorTypeDefs } from './monitor.graphql.js';
 
+import { architectureTypeDefs } from './architecture.graphql.js';
+
 export const typeDefs = [
   commonTypeDefs,
   authTypeDefs,
@@ -12,4 +14,5 @@ export const typeDefs = [
   knowledgeTypeDefs,
   chatTypeDefs,
   monitorTypeDefs,
+  architectureTypeDefs,
 ];

@@ -5,6 +5,10 @@ export interface ChatStreamRequest {
   streamId: string;
   sessionId?: string;
   userId: string;
+  sessionContext?: {
+    anchor?: Record<string, unknown> | null;
+    recentMessages?: Array<{ role: string; content: string }>;
+  };
 }
 
 export interface SseEvent {
@@ -32,6 +36,7 @@ export class AiWorkerHttpStreamClient implements AiWorkerStreamClient {
         streamId: request.streamId,
         sessionId: request.sessionId,
         userId: request.userId,
+        sessionContext: request.sessionContext,
       }),
     });
 

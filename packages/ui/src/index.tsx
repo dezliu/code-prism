@@ -37,11 +37,24 @@ export function AppShell({ appTitle, children, accentColor = '#1677ff' }: AppShe
   );
 }
 
-export function PageHeader({ title, description }: { title: string; description?: string }) {
+export function PageHeader({
+  title,
+  description,
+  extra,
+}: {
+  title: string;
+  description?: string;
+  extra?: ReactNode;
+}) {
   return (
-    <div style={{ marginBottom: 24 }}>
-      <Title level={2}>{title}</Title>
-      {description ? <Text type="secondary">{description}</Text> : null}
+    <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
+      <div>
+        <Title level={2} style={{ margin: 0 }}>
+          {title}
+        </Title>
+        {description ? <Text type="secondary">{description}</Text> : null}
+      </div>
+      {extra ? <div>{extra}</div> : null}
     </div>
   );
 }

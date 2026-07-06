@@ -1,6 +1,10 @@
 import type { Response } from 'express';
 import type { ApiConfig } from '../../config.js';
-import type { AiWorkerStreamClient, SseEvent } from '../../infrastructure/clients/ai-worker.client.js';
+import type {
+  AiWorkerStreamClient,
+  ChatStreamRequest,
+  SseEvent,
+} from '../../infrastructure/clients/ai-worker.client.js';
 import type { StreamCancelStore } from '../../infrastructure/clients/stream-cancel.store.js';
 
 export interface StreamChatInput {
@@ -8,6 +12,7 @@ export interface StreamChatInput {
   streamId: string;
   sessionId?: string;
   userId: string;
+  sessionContext?: ChatStreamRequest['sessionContext'];
 }
 
 export class StreamChatUseCase {
@@ -31,6 +36,7 @@ export class StreamChatUseCase {
       streamId: input.streamId,
       sessionId: input.sessionId,
       userId: input.userId,
+      sessionContext: input.sessionContext,
     })) {
       if (await this.cancelStore.isCancelled(input.streamId)) {
         yield {

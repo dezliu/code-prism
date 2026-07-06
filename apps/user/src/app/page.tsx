@@ -62,6 +62,7 @@ export default function HomePage() {
         title="对话"
         extra={
           <Space>
+            <Button href="/architecture">架构图</Button>
             <Tag color="orange">{user?.role}</Tag>
             <Button size="small" onClick={handleLogout}>
               退出
@@ -74,6 +75,16 @@ export default function HomePage() {
             阶段：{chat.status.phase}
             {chat.interrupted ? '（已中断）' : ''}
           </Text>
+        ) : null}
+
+        {chat.sources.length > 0 ? (
+          <div style={{ marginBottom: 12 }}>
+            {chat.sources.map((source) => (
+              <Tag key={`${source.title}-${source.ref ?? ''}`} color="blue">
+                来源：{source.title}
+              </Tag>
+            ))}
+          </div>
         ) : null}
 
         <div

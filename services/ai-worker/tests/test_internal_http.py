@@ -35,5 +35,5 @@ def test_chat_stream_returns_sse_events(monkeypatch) -> None:
     assert response.headers["content-type"].startswith("text/event-stream")
     body = response.text
     assert "event: status" in body
-    assert "event: token" in body
+    assert "event: source" in body or "event: token" in body
     assert "event: done" in body

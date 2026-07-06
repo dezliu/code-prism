@@ -16,12 +16,19 @@ export interface ChatSSEEvent {
   data: Record<string, unknown>;
 }
 
+export interface ChatSource {
+  type: string;
+  title: string;
+  ref?: string;
+}
+
 export interface UseChatSSEReturn {
   content: string;
   status: ChatSSEStatus | null;
   streaming: boolean;
   error: string | null;
   interrupted: boolean;
+  sources: ChatSource[];
   send: (message: string, sessionId?: string) => Promise<void>;
   stop: () => Promise<void>;
   reset: () => void;
@@ -62,6 +69,7 @@ export function useChatSSE(): UseChatSSEReturn {
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [interrupted, setInterrupted] = useState(false);
+  const [sources, setSources] = useState<ChatSource[]>([]);
 
   const streamIdRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -71,6 +79,7 @@ export function useChatSSE(): UseChatSSEReturn {
     setStatus(null);
     setError(null);
     setInterrupted(false);
+    setSources([]);
     streamIdRef.current = null;
   }, []);
 
@@ -170,6 +179,15 @@ export function useChatSSE(): UseChatSSEReturn {
             } else if (event === 'token') {
               const text = String(data.text ?? '');
               setContent((prev) => prev + text);
+            } else if (event === 'source') {
+              setSources((prev) => [
+                ...prev,
+                {
+                  type: String(data.type ?? 'doc'),
+                  title: String(data.title ?? ''),
+                  ref: data.ref ? String(data.ref) : undefined,
+                },
+              ]);
             } else if (event === 'done') {
               setInterrupted(Boolean(data.interrupted));
               setStreaming(false);
@@ -199,6 +217,7 @@ export function useChatSSE(): UseChatSSEReturn {
     streaming,
     error,
     interrupted,
+    sources,
     send,
     stop,
     reset,

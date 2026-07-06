@@ -6,23 +6,29 @@ import (
 )
 
 func TestLoad_shouldUseDefaultsWhenEnvNotSet(t *testing.T) {
-	t.Setenv("CORE_HTTP_PORT", "")
+	t.Setenv("CORE_HTTP_PORT", "8088")
 	t.Setenv("CORE_GRPC_PORT", "")
+	t.Setenv("MYSQL_DSN", "")
 
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if cfg.HTTPPort != 8080 {
-		t.Fatalf("expected http port 8080, got %d", cfg.HTTPPort)
+	if cfg.HTTPPort != 8088 {
+		t.Fatalf("expected http port 8088, got %d", cfg.HTTPPort)
 	}
 	if cfg.GRPCPort != 50051 {
 		t.Fatalf("expected grpc port 50051, got %d", cfg.GRPCPort)
 	}
+	if cfg.MySQLDSN != "lingprism:lingprism@tcp(localhost:13306)/lingprism?parseTime=true" {
+		t.Fatalf("unexpected mysql dsn: %s", cfg.MySQLDSN)
+	}
 	if cfg.QdrantCollection != "lingprism_v1_zhipu_1024" {
 		t.Fatalf("unexpected qdrant collection: %s", cfg.QdrantCollection)
 	}
+
+	os.Unsetenv("CORE_HTTP_PORT")
 }
 
 func TestLoad_shouldDeriveQdrantCollectionFromEmbeddingProvider(t *testing.T) {

@@ -1,0 +1,117 @@
+import { randomUUID } from 'node:crypto';
+import { RepoModel, type AuthType } from '../models/repo.model.js';
+import { RepoMetadataModel } from '../models/repo-metadata.model.js';
+
+export interface CreateRepoInput {
+  url: string;
+  authType: AuthType;
+  authConfig?: Record<string, unknown>;
+  defaultBranch?: string;
+  branchPolicy?: Record<string, unknown>;
+}
+
+export interface UpdateRepoMetadataInput {
+  displayName?: string;
+  tags?: string[];
+  businessOwner?: string | null;
+  techOwner?: string | null;
+  indexedInSearch?: boolean;
+}
+
+function deriveName(url: string): string {
+  const trimmed = url.replace(/\.git$/, '').replace(/\/$/, '');
+  const parts = trimmed.split('/');
+  return parts[parts.length - 1] || 'repo';
+}
+
+export class RepoRepository {
+  async listAll(): Promise<RepoModel[]> {
+    return RepoModel.query().withGraphFetched('metadata').orderBy('updated_at', 'desc');
+  }
+
+  async findById(id: string): Promise<RepoModel | undefined> {
+    return RepoModel.query().findById(id).withGraphFetched('metadata');
+  }
+
+  async create(input: CreateRepoInput): Promise<RepoModel> {
+    const id = randomUUID();
+    const name = deriveName(input.url);
+
+    await RepoModel.query().insert({
+      id,
+      url: input.url.trim(),
+      name,
+      authType: input.authType,
+      authConfig: input.authConfig ?? null,
+      defaultBranch: input.defaultBranch ?? 'main',
+      branchPolicy: input.branchPolicy ?? null,
+      connectionStatus: 'pending',
+      enabled: true,
+      indexedInSearch: false,
+      indexStatus: 'none',
+    });
+
+    await RepoMetadataModel.query().insert({
+      repoId: id,
+      displayName: name,
+      tags: [],
+    });
+
+    return (await this.findById(id))!;
+  }
+
+  async updateConnection(
+    id: string,
+    status: RepoModel['connectionStatus'],
+    info: {
+      error?: string | null;
+      languageSummary?: Record<string, number> | null;
+      lastCommitAt?: Date | null;
+      lastCommitSummary?: string | null;
+    },
+  ): Promise<void> {
+    await RepoModel.query().findById(id).patch({
+      connectionStatus: status,
+      connectionError: info.error ?? null,
+      languageSummary: info.languageSummary ?? null,
+      lastCommitAt: info.lastCommitAt ?? null,
+      lastCommitSummary: info.lastCommitSummary ?? null,
+      updatedAt: new Date(),
+    });
+  }
+
+  async updateMetadata(repoId: string, input: UpdateRepoMetadataInput): Promise<RepoMetadataModel> {
+    const patch: Partial<RepoMetadataModel> = { updatedAt: new Date() };
+    if (input.displayName !== undefined) patch.displayName = input.displayName;
+    if (input.tags !== undefined) patch.tags = input.tags;
+    if (input.businessOwner !== undefined) patch.businessOwner = input.businessOwner;
+    if (input.techOwner !== undefined) patch.techOwner = input.techOwner;
+
+    await RepoMetadataModel.query().findById(repoId).patch(patch);
+
+    if (input.indexedInSearch !== undefined) {
+      await RepoModel.query().findById(repoId).patch({
+        indexedInSearch: input.indexedInSearch,
+        indexStatus: input.indexedInSearch ? 'queued' : 'removed',
+        updatedAt: new Date(),
+      });
+    }
+
+    return RepoMetadataModel.query().findById(repoId).throwIfNotFound();
+  }
+
+  async setIndexStatus(repoId: string, indexStatus: RepoModel['indexStatus']): Promise<void> {
+    await RepoModel.query().findById(repoId).patch({
+      indexStatus,
+      updatedAt: new Date(),
+    });
+  }
+
+  async setEnabled(repoId: string, enabled: boolean): Promise<void> {
+    await RepoModel.query().findById(repoId).patch({
+      enabled,
+      connectionStatus: enabled ? 'connected' : 'disabled',
+      updatedAt: new Date(),
+    });
+  }
+}

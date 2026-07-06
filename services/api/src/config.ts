@@ -1,4 +1,5 @@
 import { loadProjectEnv, resolveDatabaseUrl, resolveRedisUrl } from './infrastructure/config/env.js';
+import { parseCorsOrigins } from './infrastructure/http/cors.js';
 
 loadProjectEnv();
 
@@ -24,15 +25,7 @@ function requireEnv(name: string, fallback?: string): string {
 }
 
 function loadCorsOrigins(): string[] {
-  const raw = process.env.CORS_ORIGINS;
-  if (raw?.trim()) {
-    return raw.split(',').map((origin) => origin.trim()).filter(Boolean);
-  }
-  return [
-    'http://localhost:3000',
-    'http://localhost:3001',
-    'http://localhost:3002',
-  ];
+  return parseCorsOrigins(process.env.CORS_ORIGINS);
 }
 
 export function loadConfig(): ApiConfig {

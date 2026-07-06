@@ -1,0 +1,101 @@
+package application
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"github.com/lingprism/core/internal/infrastructure/mysql"
+)
+
+type SearchService struct {
+	db *mysql.Client
+}
+
+func NewSearchService(db *mysql.Client) *SearchService {
+	return &SearchService{db: db}
+}
+
+type SearchHit struct {
+	Type    string `json:"type"`
+	Title   string `json:"title"`
+	Snippet string `json:"snippet"`
+	Ref     string `json:"ref,omitempty"`
+}
+
+type SearchResult struct {
+	Hits []SearchHit `json:"hits"`
+}
+
+func (s *SearchService) Search(ctx context.Context, query string, repoIDs []string) (SearchResult, error) {
+	q := strings.TrimSpace(query)
+	if q == "" {
+		return SearchResult{Hits: []SearchHit{}}, nil
+	}
+
+	hits := []SearchHit{}
+
+	rows, err := s.db.DB().QueryContext(ctx, `
+		SELECT id, title, content FROM knowledge_docs
+		WHERE status = 'published' AND (title LIKE ? OR content LIKE ?)
+		LIMIT 5
+	`, "%"+q+"%", "%"+q+"%")
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var id, title, content string
+			if err := rows.Scan(&id, &title, &content); err == nil {
+				snippet := content
+				if len(snippet) > 120 {
+					snippet = snippet[:120] + "…"
+				}
+				hits = append(hits, SearchHit{
+					Type:    "doc",
+					Title:   title,
+					Snippet: snippet,
+					Ref:     id,
+				})
+			}
+		}
+	}
+
+	if len(repoIDs) > 0 {
+		placeholders := strings.Repeat("?,", len(repoIDs))
+		placeholders = placeholders[:len(placeholders)-1]
+		args := make([]interface{}, len(repoIDs))
+		for i, id := range repoIDs {
+			args[i] = id
+		}
+		sql := fmt.Sprintf(`
+			SELECT r.id, COALESCE(m.display_name, r.name) AS name
+			FROM repos r
+			LEFT JOIN repo_metadata m ON m.repo_id = r.id
+			WHERE r.id IN (%s) AND r.indexed_in_search = true
+		`, placeholders)
+		repoRows, err := s.db.DB().QueryContext(ctx, sql, args...)
+		if err == nil {
+			defer repoRows.Close()
+			for repoRows.Next() {
+				var id, name string
+				if err := repoRows.Scan(&id, &name); err == nil {
+					hits = append(hits, SearchHit{
+						Type:    "repo",
+						Title:   name,
+						Snippet: fmt.Sprintf("代码仓库 %s 中与「%s」相关的索引片段", name, q),
+						Ref:     id,
+					})
+				}
+			}
+		}
+	}
+
+	if len(hits) == 0 {
+		hits = append(hits, SearchHit{
+			Type:    "code",
+			Title:   "代码检索结果",
+			Snippet: fmt.Sprintf("未找到精确匹配，建议缩小问题范围后重试。查询：%s", q),
+		})
+	}
+
+	return SearchResult{Hits: hits}, nil
+}

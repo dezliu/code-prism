@@ -9,5 +9,6 @@ export type {
   ChatSSEEvent,
   ChatSSEPhase,
   ChatSSEStatus,
+  ChatSource,
   UseChatSSEReturn,
 } from './use-chat-sse';

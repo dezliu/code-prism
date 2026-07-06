@@ -24,7 +24,7 @@ describe('nginx lingprism.conf routes', () => {
   });
 
   it('routes /api/chat/ to api with SSE-friendly settings', () => {
-    expect(conf).toMatch(/location\s+\/api\/chat\/\s*\{[\s\S]*?proxy_pass\s+\$api_upstream\/api\/chat\//);
+    expect(conf).toMatch(/location\s+\/api\/chat\/\s*\{[\s\S]*?proxy_pass\s+\$api_upstream\$request_uri/);
     expect(conf).toContain('proxy_buffering off');
     expect(conf).toContain('proxy_read_timeout 3600s');
   });

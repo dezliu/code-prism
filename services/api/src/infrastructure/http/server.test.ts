@@ -39,6 +39,7 @@ function createTestApp(aiWorkerClient?: AiWorkerStreamClient) {
     config: testConfig,
     aiWorkerClient: aiWorkerClient ?? new MockAiWorkerStreamClient(),
     cancelStore: new MemoryStreamCancelStore(),
+    usePersistence: false,
   });
 }
 
@@ -68,6 +69,16 @@ describe('CORS', () => {
 
     expect(response.status).toBe(204);
     expect(response.headers['access-control-allow-origin']).toBeUndefined();
+  });
+
+  it('should allow 127.0.0.1 alias when localhost is configured', async () => {
+    const response = await request(app)
+      .options('/graphql')
+      .set('Origin', 'http://127.0.0.1:3000')
+      .set('Access-Control-Request-Method', 'POST');
+
+    expect(response.status).toBe(204);
+    expect(response.headers['access-control-allow-origin']).toBe('http://127.0.0.1:3000');
   });
 });
 
@@ -124,13 +135,13 @@ describe('GraphQL', () => {
     });
   });
 
-  it('should return empty repos list from scaffold stub', async () => {
+  it('should require auth for repos query', async () => {
     const response = await request(app)
       .post('/graphql')
       .send({ query: '{ repos { id name } }' });
 
     expect(response.status).toBe(200);
-    expect(response.body.data.repos).toEqual([]);
+    expect(response.body.errors?.[0]?.message).toContain('UNAUTHORIZED');
   });
 });
 

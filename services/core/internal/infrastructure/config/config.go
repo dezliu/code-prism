@@ -25,9 +25,11 @@ type Config struct {
 }
 
 func Load() (*Config, error) {
-	httpPort, err := strconv.Atoi(getEnv("CORE_HTTP_PORT", "8080"))
+	loadProjectEnv()
+
+	httpPort, err := resolveHTTPPort()
 	if err != nil {
-		return nil, fmt.Errorf("invalid CORE_HTTP_PORT: %w", err)
+		return nil, err
 	}
 
 	grpcPort, err := strconv.Atoi(getEnv("CORE_GRPC_PORT", "50051"))
@@ -46,15 +48,15 @@ func Load() (*Config, error) {
 		LogLevel:         getEnv("LOG_LEVEL", "info"),
 		HTTPPort:         httpPort,
 		GRPCPort:         grpcPort,
-		MySQLDSN:         getEnv("MYSQL_DSN", "lingprism:lingprism@tcp(localhost:3306)/lingprism?parseTime=true"),
+		MySQLDSN:         resolveMySQLDSN(),
 		Neo4jURI:         getEnv("NEO4J_URI", "bolt://localhost:7687"),
 		Neo4jUser:        getEnv("NEO4J_USER", "neo4j"),
 		Neo4jPassword:    getEnv("NEO4J_PASSWORD", "lingprism"),
-		QdrantURL:        getEnv("QDRANT_URL", "http://localhost:6333"),
+		QdrantURL:        resolveQdrantURL(),
 		QdrantCollection: resolveQdrantCollection(embeddingProvider, embeddingDim),
 		EmbeddingDim:     embeddingDim,
-		OpenSearchURL:    getEnv("OPENSEARCH_URL", "http://localhost:9200"),
-		RedisURL:         getEnv("REDIS_URL", "redis://localhost:6379/0"),
+		OpenSearchURL:    resolveOpenSearchURL(),
+		RedisURL:         resolveRedisURL(),
 		IndexerGRPCAddr:  getEnv("INDEXER_GRPC_ADDR", "localhost:50052"),
 	}, nil
 }

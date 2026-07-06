@@ -1,5 +1,6 @@
 export const commonTypeDefs = /* GraphQL */ `
   scalar DateTime
+  scalar JSON
 
   type HealthStatus {
     status: String!

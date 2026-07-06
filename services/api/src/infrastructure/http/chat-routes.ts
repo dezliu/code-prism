@@ -1,11 +1,15 @@
 import { Router, type Response } from 'express';
-import { randomUUID } from 'node:crypto';
 import type { ApiConfig } from '../../config.js';
+import { writeSseEvent } from '../../application/chat/stream-chat.js';
+import { createStreamId, ChatStreamOrchestrator } from '../../application/chat/chat-stream-orchestrator.js';
+import { PassthroughChatStreamOrchestrator } from '../../application/chat/passthrough-chat-orchestrator.js';
+import { StreamChatUseCase } from '../../application/chat/stream-chat.js';
 import {
-  pipeSseStream,
-  StreamChatUseCase,
-  writeSseEvent,
-} from '../../application/chat/stream-chat.js';
+  CreateChatSessionUseCase,
+  GetSessionContextUseCase,
+  PersistChatMessageUseCase,
+} from '../../application/chat/chat.use-cases.js';
+import { ChatRepository } from '../db/repositories/chat.repository.js';
 import {
   createJwtMiddleware,
   type AuthenticatedRequest,
@@ -21,6 +25,8 @@ export interface ChatRoutesDeps {
   config: ApiConfig;
   aiWorkerClient: AiWorkerStreamClient;
   cancelStore?: StreamCancelStore;
+  orchestrator?: ChatStreamOrchestrator | PassthroughChatStreamOrchestrator;
+  usePersistence?: boolean;
 }
 
 export function createChatRoutes(deps: ChatRoutesDeps): Router {
@@ -28,6 +34,18 @@ export function createChatRoutes(deps: ChatRoutesDeps): Router {
   const jwtMiddleware = createJwtMiddleware(deps.config);
   const cancelStore = deps.cancelStore ?? new RedisStreamCancelStore(deps.config);
   const streamChatUseCase = new StreamChatUseCase(deps.aiWorkerClient, cancelStore);
+
+  const chatRepo = new ChatRepository();
+  const orchestrator =
+    deps.orchestrator ??
+    (deps.usePersistence === false
+      ? new PassthroughChatStreamOrchestrator(streamChatUseCase)
+      : new ChatStreamOrchestrator(
+          streamChatUseCase,
+          new CreateChatSessionUseCase(chatRepo),
+          new GetSessionContextUseCase(chatRepo),
+          new PersistChatMessageUseCase(chatRepo),
+        ));
 
   router.post(
     '/api/chat/stream',
@@ -38,7 +56,7 @@ export function createChatRoutes(deps: ChatRoutesDeps): Router {
         sessionId?: string;
       };
 
-      const streamId = randomUUID();
+      const streamId = createStreamId();
       const userId = req.auth!.userId;
 
       res.status(200);
@@ -54,15 +72,13 @@ export function createChatRoutes(deps: ChatRoutesDeps): Router {
       });
 
       try {
-        await pipeSseStream(
+        await orchestrator.handle({
+          message: message ?? '',
+          streamId,
+          sessionId,
+          userId,
           res,
-          streamChatUseCase.execute({
-            message: message ?? '',
-            streamId,
-            sessionId,
-            userId,
-          }),
-        );
+        });
       } catch (error) {
         writeSseEvent(res, {
           event: 'error',

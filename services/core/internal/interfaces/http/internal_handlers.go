@@ -1,0 +1,108 @@
+package http
+
+import (
+	"encoding/json"
+	"net/http"
+	"strings"
+
+	"github.com/lingprism/core/internal/application"
+)
+
+type Handler struct {
+	indexSvc  *application.IndexService
+	searchSvc *application.SearchService
+	archSvc   *application.ArchitectureService
+}
+
+func NewHandler(
+	index *application.IndexService,
+	search *application.SearchService,
+	arch *application.ArchitectureService,
+) *Handler {
+	return &Handler{indexSvc: index, searchSvc: search, archSvc: arch}
+}
+
+func (h *Handler) Register(mux *http.ServeMux) {
+	mux.HandleFunc("/internal/repos/test-connection", h.testConnection)
+	mux.HandleFunc("/internal/index/enqueue", h.enqueueIndex)
+	mux.HandleFunc("/internal/search", h.handleSearch)
+	mux.HandleFunc("/internal/architecture/", h.architecture)
+}
+
+func writeJSON(w http.ResponseWriter, status int, payload interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func (h *Handler) testConnection(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var input application.TestConnectionInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	result := h.indexSvc.TestConnection(r.Context(), input)
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) enqueueIndex(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		RepoID string `json:"repoId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.RepoID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "repoId required"})
+		return
+	}
+	result, err := h.indexSvc.EnqueueIndex(r.Context(), body.RepoID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) handleSearch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	q := r.URL.Query().Get("q")
+	repoIDs := []string{}
+	if raw := r.URL.Query().Get("repoIds"); raw != "" {
+		repoIDs = strings.Split(raw, ",")
+	}
+	result, err := h.searchSvc.Search(r.Context(), q, repoIDs)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) architecture(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/internal/architecture/")
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) < 2 || parts[1] != "generate-draft" {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	repoID := parts[0]
+	result, err := h.archSvc.GenerateDraft(r.Context(), repoID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}

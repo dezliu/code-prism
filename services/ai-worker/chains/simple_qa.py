@@ -7,7 +7,7 @@ import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
-from infrastructure.llm.factory import create_chat_model
+from infrastructure.llm.factory import PlaceholderChatModel, create_chat_model
 
 
 def _extract_text(chunk: Any) -> str:
@@ -46,6 +46,20 @@ async def stream_qa_tokens(
     yield "status", {"phase": "generating"}
 
     model = create_chat_model("qa")
+
+    if isinstance(model, PlaceholderChatModel):
+        yield "error", {
+            "code": "LLM_NOT_CONFIGURED",
+            "message": (
+                "未配置 LLM API Key。请在 infra/docker/.env 中设置 ZHIPU_API_KEY 后重启 ai-worker。"
+            ),
+        }
+        yield "done", {
+            "messageId": str(uuid.uuid4()),
+            "interrupted": False,
+        }
+        return
+
     prompt = (
         "你是灵镜(LingPrism)企业知识助手。请简洁回答用户问题。\n\n"
         f"用户问题：{message}"

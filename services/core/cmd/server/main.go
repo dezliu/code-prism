@@ -12,6 +12,7 @@ import (
 
 	"github.com/lingprism/core/internal/application"
 	"github.com/lingprism/core/internal/infrastructure/config"
+	"github.com/lingprism/core/internal/infrastructure/mysql"
 	httpiface "github.com/lingprism/core/internal/interfaces/http"
 	grpciface "github.com/lingprism/core/internal/interfaces/grpc"
 )
@@ -25,6 +26,25 @@ func main() {
 	healthSvc := application.NewHealthService()
 	pingSvc := application.NewPingService()
 
+	db, err := mysql.NewClient(cfg.MySQLDSN)
+	if err != nil {
+		log.Printf(`{"level":"warn","msg":"mysql unavailable, internal api degraded","error":%q}`, err.Error())
+	}
+	defer func() {
+		if db != nil {
+			_ = db.Close()
+		}
+	}()
+
+	var indexSvc *application.IndexService
+	var searchSvc *application.SearchService
+	var archSvc *application.ArchitectureService
+	if db != nil {
+		indexSvc = application.NewIndexService(db)
+		searchSvc = application.NewSearchService(db)
+		archSvc = application.NewArchitectureService(db)
+	}
+
 	grpcServer, err := grpciface.Start(cfg.GRPCPort, pingSvc)
 	if err != nil {
 		log.Fatalf("start grpc: %v", err)
@@ -32,6 +52,10 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.Handle("/health", httpiface.NewHealthHandler(healthSvc))
+	if indexSvc != nil && searchSvc != nil && archSvc != nil {
+		internalHandler := httpiface.NewHandler(indexSvc, searchSvc, archSvc)
+		internalHandler.Register(mux)
+	}
 
 	httpServer := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.HTTPPort),
@@ -47,6 +71,10 @@ func main() {
 	}()
 
 	log.Printf(`{"level":"%s","msg":"core grpc server started","port":%d}`, cfg.LogLevel, cfg.GRPCPort)
+
+	if cfg.HTTPPort == 18080 {
+		log.Printf(`{"level":"warn","msg":"preferred http port unavailable, using fallback","port":%d}`, cfg.HTTPPort)
+	}
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)

@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from chains.simple_qa import stream_qa_tokens
+from chains.qa_router import stream_qa_with_rag
 from infrastructure.config import load_env
 from infrastructure.llm.streaming import is_cancelled, request_cancel
 
@@ -28,6 +28,7 @@ class ChatStreamRequest(BaseModel):
     stream_id: str = Field(alias="streamId")
     session_id: str | None = Field(default=None, alias="sessionId")
     user_id: str = Field(alias="userId")
+    session_context: dict | None = Field(default=None, alias="sessionContext")
 
 
 def _redis_client() -> redis.Redis:
@@ -45,7 +46,11 @@ async def _event_stream(body: ChatStreamRequest) -> AsyncIterator[str]:
     def cancelled() -> bool:
         return is_cancelled(client, body.stream_id)
 
-    async for event_name, data in stream_qa_tokens(body.message, is_cancelled=cancelled):
+    async for event_name, data in stream_qa_with_rag(
+        body.message,
+        session_context=body.session_context,
+        is_cancelled=cancelled,
+    ):
         if data is None:
             continue
         yield _format_sse(event_name, data)
