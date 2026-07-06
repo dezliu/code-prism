@@ -1,6 +1,6 @@
 # LingPrism Indexer — Rust tree-sitter CLI (on-demand / batch jobs)
 # Build: docker build -f infra/docker/Dockerfile.indexer -t lingprism-indexer .
-FROM rust:1.83-alpine AS builder
+FROM rust:1.85-alpine AS builder
 RUN apk add --no-cache musl-dev
 WORKDIR /src
 COPY services/indexer/Cargo.toml services/indexer/Cargo.lock ./

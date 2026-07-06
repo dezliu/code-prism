@@ -229,23 +229,25 @@ export default function ChatPageInner() {
     wasStreamingRef.current = false;
 
     if (chat.content) {
+      const assistantContent = chat.content;
       setMessages((prev) => [
         ...prev,
         {
           id: `assistant-${Date.now()}`,
           role: 'assistant',
-          content: chat.content,
+          content: assistantContent,
           sources: chat.sources.length > 0 ? [...chat.sources] : undefined,
           interrupted: chat.interrupted,
         },
       ]);
     } else if (chat.error) {
+      const errorMessage = chat.error;
       setMessages((prev) => [
         ...prev,
         {
           id: `assistant-error-${Date.now()}`,
           role: 'assistant',
-          content: chat.error,
+          content: errorMessage,
         },
       ]);
     }

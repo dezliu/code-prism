@@ -1,7 +1,17 @@
 import { ApplicationError, NotFoundError } from '../../domain/errors.js';
+import type { DriftStatus } from '../../infrastructure/db/models/arch-drift.model.js';
 import { MonitorRepository } from '../../infrastructure/db/repositories/monitor.repository.js';
 import { RepoRepository } from '../../infrastructure/db/repositories/repo.repository.js';
 import type { GraphData } from '../../infrastructure/db/models/graph-snapshot.model.js';
+
+const DRIFT_STATUSES: DriftStatus[] = ['open', 'resolved', 'ignored'];
+
+function parseDriftStatus(status: string): DriftStatus {
+  if (!DRIFT_STATUSES.includes(status as DriftStatus)) {
+    throw new ApplicationError('无效的状态', 'VALIDATION_ERROR');
+  }
+  return status as DriftStatus;
+}
 
 export interface IndexJobSummary {
   id: string;
@@ -95,7 +105,8 @@ export class ListArchDriftsUseCase {
   ) {}
 
   async execute(status?: string): Promise<ArchDriftSummary[]> {
-    const drifts = await this.monitor.listArchDrifts(status);
+    const driftStatus = status ? parseDriftStatus(status) : undefined;
+    const drifts = await this.monitor.listArchDrifts(driftStatus);
     const repoMap = new Map(
       (await this.repos.listAll()).map((r) => [r.id, r.name]),
     );
@@ -169,11 +180,8 @@ export class ResolveArchDriftUseCase {
   ) {}
 
   async execute(id: string, status: string): Promise<ArchDriftSummary> {
-    const allowed = ['open', 'resolved', 'ignored'];
-    if (!allowed.includes(status)) {
-      throw new ApplicationError('无效的状态', 'VALIDATION_ERROR');
-    }
-    const drift = await this.monitor.updateArchDriftStatus(id, status);
+    const driftStatus = parseDriftStatus(status);
+    const drift = await this.monitor.updateArchDriftStatus(id, driftStatus);
     const repo = await this.repos.findById(drift.repoId);
     return {
       id: drift.id,

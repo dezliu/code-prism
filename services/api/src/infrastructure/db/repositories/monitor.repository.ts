@@ -1,6 +1,6 @@
 import { IndexJobModel } from '../models/index-job.model.js';
 import { HealthScoreModel } from '../models/health-score.model.js';
-import { ArchDriftModel } from '../models/arch-drift.model.js';
+import { ArchDriftModel, type DriftStatus } from '../models/arch-drift.model.js';
 import { GraphSnapshotModel } from '../models/graph-snapshot.model.js';
 
 export class MonitorRepository {
@@ -12,7 +12,7 @@ export class MonitorRepository {
     return HealthScoreModel.query().orderBy('score', 'asc');
   }
 
-  async listArchDrifts(status?: string): Promise<ArchDriftModel[]> {
+  async listArchDrifts(status?: DriftStatus): Promise<ArchDriftModel[]> {
     let query = ArchDriftModel.query().orderBy('detected_at', 'desc');
     if (status) {
       query = query.where('status', status);
@@ -47,7 +47,7 @@ export class MonitorRepository {
     return rows.map((r) => r.repoId);
   }
 
-  async updateArchDriftStatus(id: string, status: string): Promise<ArchDriftModel> {
+  async updateArchDriftStatus(id: string, status: DriftStatus): Promise<ArchDriftModel> {
     await ArchDriftModel.query().findById(id).patch({ status });
     return ArchDriftModel.query().findById(id).throwIfNotFound();
   }

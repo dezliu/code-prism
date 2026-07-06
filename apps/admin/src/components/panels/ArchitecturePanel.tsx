@@ -167,7 +167,7 @@ export function ArchitecturePanel() {
     const result = await generateStream(repoId);
     if (result) {
       graphGenSeqRef.current += 1;
-      setGraph(result);
+      setGraph(result as GraphData);
       setDraftReady(true);
       message.success('架构图草稿已生成');
       await loadItems();
@@ -273,12 +273,12 @@ export function ArchitecturePanel() {
     await runStreamGenerate(editRepoId);
   };
 
-  const onBackgroundGenerate = async (repoId: string, closeEditModal = false) => {
+  const onBackgroundGenerate = async (repoId: string, shouldCloseEditModal = false) => {
     try {
       await enqueueArchGenerateJob(repoId);
       message.success('已加入后台生成队列');
       void refreshJobs();
-      if (closeEditModal) {
+      if (shouldCloseEditModal) {
         closeEditModal();
       }
     } catch (error) {
