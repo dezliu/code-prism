@@ -17,13 +17,14 @@ type coreServiceServer struct {
 	ping *application.PingService
 }
 
-func (s *coreServiceServer) Ping(_ context.Context, _ *emptypb.Empty) (*wrapperspb.StringValue, error) {
-	return wrapperspb.String(s.ping.Ping()), nil
+// coreServiceAPI is the service interface required by grpc.ServiceDesc.HandlerType.
+type coreServiceAPI interface {
+	Ping(context.Context, *emptypb.Empty) (*wrapperspb.StringValue, error)
 }
 
 var coreServiceDesc = grpc.ServiceDesc{
 	ServiceName: coreServiceName,
-	HandlerType: (*coreServiceServer)(nil),
+	HandlerType: (*coreServiceAPI)(nil),
 	Methods: []grpc.MethodDesc{
 		{
 			MethodName: "Ping",
@@ -32,6 +33,10 @@ var coreServiceDesc = grpc.ServiceDesc{
 	},
 	Streams:  []grpc.StreamDesc{},
 	Metadata: "core/v1/core.proto",
+}
+
+func (s *coreServiceServer) Ping(_ context.Context, _ *emptypb.Empty) (*wrapperspb.StringValue, error) {
+	return wrapperspb.String(s.ping.Ping()), nil
 }
 
 func corePingHandler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {

@@ -1,35 +1,22 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { Button, Card, Col, Menu, Row, Space, Tag, message } from 'antd';
-import {
-  AlertOutlined,
-  ApiOutlined,
-  BookOutlined,
-  DatabaseOutlined,
-  PartitionOutlined,
-} from '@ant-design/icons';
-import { AppShell, PageHeader } from '@lingprism/ui';
+import { Suspense, useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { fetchCurrentUser, logout, type AuthUser } from '@lingprism/graphql';
+import { AdminShell } from '../components/AdminShell';
+import { ArchitecturePanel } from '../components/panels/ArchitecturePanel';
+import { AlertsPanel } from '../components/panels/AlertsPanel';
+import { KnowledgePanel } from '../components/panels/KnowledgePanel';
+import { ReposPanel } from '../components/panels/ReposPanel';
+import { TemplatesPanel } from '../components/panels/TemplatesPanel';
+import { WorkbenchPanel } from '../components/panels/WorkbenchPanel';
+import { parseModuleParam, type AdminModule } from '../lib/modules';
 
-const menuItems = [
-  { key: 'repos', icon: <DatabaseOutlined />, label: '代码源管理' },
-  { key: 'knowledge', icon: <BookOutlined />, label: '知识库' },
-  { key: 'architecture', icon: <PartitionOutlined />, label: '架构图' },
-  { key: 'templates', icon: <ApiOutlined />, label: '问答模板' },
-  { key: 'alerts', icon: <AlertOutlined />, label: '预警配置' },
-];
-
-const MENU_ROUTES: Record<string, string> = {
-  repos: '/repos',
-  knowledge: '/knowledge',
-  architecture: '/architecture',
-};
-
-export default function AdminHomePage() {
+function AdminHomeContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [user, setUser] = useState<AuthUser | null>(null);
+  const activeModule = parseModuleParam(searchParams.get('module'));
 
   useEffect(() => {
     fetchCurrentUser()
@@ -43,53 +30,53 @@ export default function AdminHomePage() {
       .catch(() => router.replace('/login'));
   }, [router]);
 
+  const setModule = (module: AdminModule | null) => {
+    if (module) {
+      router.replace(`/?module=${module}`, { scroll: false });
+    } else {
+      router.replace('/', { scroll: false });
+    }
+  };
+
   const handleLogout = () => {
     logout();
     router.replace('/login');
   };
 
-  const handleMenuSelect = (info: { key: string }) => {
-    const route = MENU_ROUTES[info.key];
-    if (route) {
-      router.push(route);
-      return;
+  const renderPanel = () => {
+    switch (activeModule) {
+      case 'repos':
+        return <ReposPanel />;
+      case 'knowledge':
+        return <KnowledgePanel />;
+      case 'architecture':
+        return <ArchitecturePanel />;
+      case 'templates':
+        return <TemplatesPanel />;
+      case 'alerts':
+        return <AlertsPanel />;
+      default:
+        return <WorkbenchPanel />;
     }
-    message.info('该模块将在 Phase 1 实现');
   };
 
   return (
-    <AppShell appTitle="管理后台" accentColor="#1677ff">
-      <PageHeader
-        title="数据与知识治理"
-        description={user ? `已登录：${user.displayName}` : '加载中…'}
-      />
-      <Row gutter={16}>
-        <Col xs={24} md={6}>
-          <Card>
-            <Menu
-              mode="inline"
-              items={menuItems}
-              defaultSelectedKeys={['repos']}
-              onSelect={handleMenuSelect}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} md={18}>
-          <Card
-            title="工作台"
-            extra={
-              <Space>
-                {user ? <Tag color="blue">{user.role}</Tag> : null}
-                <Button size="small" onClick={handleLogout}>
-                  退出
-                </Button>
-              </Space>
-            }
-          >
-            <p>请从左侧选择管理模块。业务功能将在 Phase 1 实现。</p>
-          </Card>
-        </Col>
-      </Row>
-    </AppShell>
+    <AdminShell
+      user={user}
+      activeModule={activeModule}
+      onModuleSelect={(key) => setModule(key)}
+      onBack={() => setModule(null)}
+      onLogout={handleLogout}
+    >
+      {renderPanel()}
+    </AdminShell>
+  );
+}
+
+export default function AdminHomePage() {
+  return (
+    <Suspense fallback={null}>
+      <AdminHomeContent />
+    </Suspense>
   );
 }

@@ -28,6 +28,10 @@ export class RepoModel extends BaseModel {
   createdAt!: Date;
   updatedAt!: Date;
 
+  static get jsonAttributes() {
+    return ['authConfig', 'branchPolicy', 'languageSummary'];
+  }
+
   metadata?: RepoMetadataModel;
 
   static get relationMappings() {

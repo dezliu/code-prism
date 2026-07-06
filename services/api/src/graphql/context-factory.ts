@@ -37,13 +37,30 @@ import {
   GenerateArchDraftUseCase,
   PublishOfficialArchitectureUseCase,
 } from '../application/architecture/architecture.use-cases.js';
+import {
+  ListQaTemplatesUseCase,
+  ListEnabledQaTemplatesUseCase,
+  CreateQaTemplateUseCase,
+  UpdateQaTemplateUseCase,
+  DeleteQaTemplateUseCase,
+  PreviewQaTemplateUseCase,
+} from '../application/template/template.use-cases.js';
+import {
+  ListAlertRulesUseCase,
+  CreateAlertRuleUseCase,
+  UpdateAlertRuleUseCase,
+  DeleteAlertRuleUseCase,
+} from '../application/alert/alert.use-cases.js';
 import { UserRepository } from '../infrastructure/db/repositories/user.repository.js';
 import { RepoRepository } from '../infrastructure/db/repositories/repo.repository.js';
 import { KnowledgeDocRepository } from '../infrastructure/db/repositories/knowledge-doc.repository.js';
+import { QaTemplateRepository } from '../infrastructure/db/repositories/qa-template.repository.js';
+import { AlertRuleRepository } from '../infrastructure/db/repositories/alert-rule.repository.js';
 import { ChatRepository } from '../infrastructure/db/repositories/chat.repository.js';
 import { MonitorRepository } from '../infrastructure/db/repositories/monitor.repository.js';
 import {
   createCoreHttpClient,
+  resolveCoreHttpBaseUrls,
   type CoreHttpClient,
 } from '../infrastructure/clients/core-http.client.js';
 import { extractBearerToken, verifyAccessToken } from '../infrastructure/auth/jwt.js';
@@ -54,10 +71,6 @@ export interface GraphQLContextDeps {
   coreClient?: CoreHttpClient;
 }
 
-function resolveCoreHttpUrl(config: ApiConfig): string {
-  return process.env.CORE_HTTP_URL ?? `http://localhost:${process.env.CORE_HTTP_PORT ?? '8080'}`;
-}
-
 export function buildGraphQLContext(
   config: ApiConfig,
   req: express.Request,
@@ -66,9 +79,11 @@ export function buildGraphQLContext(
   const userRepo = new UserRepository();
   const repoRepo = new RepoRepository();
   const knowledgeRepo = new KnowledgeDocRepository();
+  const templateRepo = new QaTemplateRepository();
+  const alertRepo = new AlertRuleRepository();
   const chatRepo = new ChatRepository();
   const monitorRepo = new MonitorRepository();
-  const core = deps?.coreClient ?? createCoreHttpClient(resolveCoreHttpUrl(config));
+  const core = deps?.coreClient ?? createCoreHttpClient(resolveCoreHttpBaseUrls());
 
   let auth: GraphQLContext['auth'] = null;
   const token = extractBearerToken(req.headers.authorization);
@@ -112,5 +127,15 @@ export function buildGraphQLContext(
       monitorRepo,
       repoRepo,
     ),
+    listQaTemplatesUseCase: new ListQaTemplatesUseCase(templateRepo),
+    listEnabledQaTemplatesUseCase: new ListEnabledQaTemplatesUseCase(templateRepo),
+    createQaTemplateUseCase: new CreateQaTemplateUseCase(templateRepo),
+    updateQaTemplateUseCase: new UpdateQaTemplateUseCase(templateRepo),
+    deleteQaTemplateUseCase: new DeleteQaTemplateUseCase(templateRepo),
+    previewQaTemplateUseCase: new PreviewQaTemplateUseCase(),
+    listAlertRulesUseCase: new ListAlertRulesUseCase(alertRepo),
+    createAlertRuleUseCase: new CreateAlertRuleUseCase(alertRepo),
+    updateAlertRuleUseCase: new UpdateAlertRuleUseCase(alertRepo),
+    deleteAlertRuleUseCase: new DeleteAlertRuleUseCase(alertRepo),
   };
 }

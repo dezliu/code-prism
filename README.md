@@ -7,7 +7,7 @@
 | 模块 | 能力 |
 |------|------|
 | **用户平台** | JWT 登录 · SSE 流式问答 · 模板推荐 · 历史会话 · 架构图浏览 |
-| **管理后台** | 代码源 CRUD/元数据 · 知识库 · 架构草稿生成/发布 |
+| **管理后台** | 代码源 CRUD/元数据 · 知识库 · 架构草稿 · **问答模板** · **预警配置**（单页侧栏切换） |
 | **监控平台** | 健康度 · 架构漂移处理 · 索引任务看板 |
 | **索引流水线** | Git clone → Rust tree-sitter → Qdrant 向量 + Neo4j 图谱 |
 | **MCP 对外** | `search_code` / `search_knowledge` / `get_architecture` / `ask_question` |
@@ -89,13 +89,16 @@ cd infra/migrations && npm install && npm run migrate && npm run seed
 | T1 | `cd infra/docker && docker compose up -d` | 13306 等（数据层，长期运行） |
 | T2 | `cd services/api && pnpm dev` | 4000（`tsx watch` 自动重载） |
 | T3 | `cd services/ai-worker && source .venv/bin/activate && lingprism-ai-http` | 8001 |
+| **T4（推荐）** | `cd services/core && go run ./cmd/server` | 8080 或 18080† |
+
+† 代码源连接测试、索引、RAG、架构草稿等依赖 Core。未启动时 GraphQL 返回 `CORE_UNAVAILABLE`。API 会自动尝试 `8080` 与 `18080`。
 
 AI Worker 首次需安装：`python3 -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]"`
 
 按需额外：
 
 ```bash
-cd services/core && go run ./cmd/server          # 索引/RAG/架构草稿（推荐本地 dev 启动）
+cd services/core && go run ./cmd/server          # 见上表 T4（本地 dev 建议常驻）
 cd services/indexer && cargo build --release     # 可选：本地编译 indexer；或确保 PATH 有 lingprism-indexer
 cd services/ai-worker && celery -A celery_app worker --loglevel=info
 cd services/mcp && pip install -e ".[dev]" && lingprism-mcp
@@ -106,7 +109,7 @@ cd services/mcp && pip install -e ".[dev]" && lingprism-mcp
 | 端 | 命令 | 地址 | 典型页面 |
 |----|------|------|----------|
 | 用户端 | `pnpm dev:user` | http://localhost:3000 | `/login` `/` 或 `/chat` 问答 · `/sessions` · `/architecture` |
-| 管理端 | `pnpm dev:admin` | http://localhost:3001 | `/repos` 代码源 · `/knowledge` 知识库 · `/architecture` 架构发布 |
+| 管理端 | `pnpm dev:admin` | http://localhost:3001 | 首页侧栏切换：`?module=repos` 代码源 · `knowledge` 知识库 · `architecture` 架构 · `templates` 问答模板 · `alerts` 预警 |
 | 监控端 | `pnpm dev:monitor` | http://localhost:3002 | `/` 概览 · `/health` 健康/合规 · `/index-status` 索引 |
 
 验证：
@@ -138,11 +141,12 @@ curl http://localhost:4000/health
 
 ### 端到端验证
 
-1. 用户端：http://localhost:3000/login → `employee@lingprism.local` / `lingprism123` → 发送问题观察 SSE（含模板推荐卡片）
-2. 管理端：http://localhost:3001/login → `admin@lingprism.local` / `lingprism123` → `/repos` 纳管仓库触发索引
+1. 用户端：http://localhost:3000/login → `employee@lingprism.local` / `lingprism123` → 发送问题观察 SSE（含模板推荐卡片；模板来自管理端「问答模板」配置）
+2. 管理端：http://localhost:3001/login → `admin@lingprism.local` / `lingprism123` → 侧栏选择模块；代码源「重测连接」需 **Core 已启动**
 3. 监控端：http://localhost:3002/login → `/health` 查看健康度与漂移处理
 4. LLM 需在根 `.env` 配置 `ZHIPU_API_KEY`；未配置时返回 placeholder 文本
 5. 完整索引需 **core + git + indexer**；本地可 `export INDEXER_BINARY=$(pwd)/services/indexer/target/release/lingprism-indexer`
+6. 新增迁移后执行：`cd infra/migrations && npm run migrate`（含 `qa_templates`、`alert_rules` 等表）
 
 ---
 
@@ -337,7 +341,7 @@ cd infra/docker && docker compose --profile app build core
 ```
 apps/
   user/       # 用户前端 · 问答 /chat · 会话 /sessions · 架构 /architecture
-  admin/      # 管理后台 · 代码源 /repos · 知识库 /knowledge · 架构 /architecture
+  admin/      # 管理后台 · 单页侧栏 ?module= repos/knowledge/architecture/templates/alerts
   monitor/    # 监控平台 · 概览 / · 健康 /health · 索引 /index-status
 packages/
   ui/         # 共享组件（AppShell、LoginForm）
@@ -361,7 +365,7 @@ docs/         # PRD、架构计划、API 契约
 
 | 类型 | 路径 | 说明 |
 |------|------|------|
-| GraphQL | `POST /graphql` | `login` / `me` / 业务查询 |
+| GraphQL | `POST /graphql` | `login` / `me` / 业务查询；管理端 `qaTemplates` / `alertRules` CRUD |
 | SSE | `POST /api/chat/stream` | 流式问答（需 JWT）；事件含 `template_hint` |
 | SSE | `POST /api/chat/stop` | 中断生成 |
 | MCP | `POST /mcp` | JSON-RPC 2.0；需 `X-API-Key` + `MCP-Protocol-Version: 2025-03-26` |
@@ -416,6 +420,13 @@ cd infra/docker && docker compose --profile app up -d ai-worker
 4. 浏览器应访问 **8080**，GraphQL 走 **8080/graphql**（同源，无跨域）
 
 `Status code: (null)` 通常表示 api 未启动或地址/port 错误，而非缺少 CORS 头。
+
+### `testRepoConnection` 报 `fetch failed` 或 `CORE_UNAVAILABLE`
+
+1. 启动 Core：`cd services/core && go run ./cmd/server`（日志出现 `core http server started`）
+2. 确认健康：`curl http://localhost:8080/health` 或 `curl http://localhost:18080/health`
+3. API 默认依次尝试 `8080`、`18080`；也可在根 `.env` 或 `services/api/.env` 设置 `CORE_HTTP_URL=http://localhost:18080`
+4. 无 Core 的纯前端联调可设 `CORE_HTTP_STUB=true`（返回 mock 数据）
 
 ### GraphQL `login` 报 `ECONNREFUSED`
 

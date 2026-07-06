@@ -12,6 +12,7 @@
     "@ant-design/icons": "^5.5.2",
     "@ant-design/nextjs-registry": "^1.0.1",
     "@lingprism/graphql": "workspace:*",
+    "@lingprism/graph-viz": "workspace:*",
     "@lingprism/shared": "workspace:*",
     "@lingprism/ui": "workspace:*",
     "antd": "^5.22.2",

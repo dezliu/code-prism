@@ -14,6 +14,7 @@ import {
 import type { SseEvent } from '../../infrastructure/clients/ai-worker.client.js';
 import type { ContextAnchor } from '../../infrastructure/db/models/chat-session.model.js';
 import type { MessageSource } from '../../infrastructure/db/models/chat-message.model.js';
+import type { ListEnabledQaTemplatesUseCase } from '../template/template.use-cases.js';
 
 export class ChatStreamOrchestrator {
   constructor(
@@ -21,6 +22,7 @@ export class ChatStreamOrchestrator {
     private readonly createSession: CreateChatSessionUseCase,
     private readonly getSessionContext: GetSessionContextUseCase,
     private readonly persistMessage: PersistChatMessageUseCase,
+    private readonly listEnabledQaTemplates: ListEnabledQaTemplatesUseCase,
   ) {}
 
   async handle(input: {
@@ -53,6 +55,7 @@ export class ChatStreamOrchestrator {
     });
 
     const sessionContext = await this.getSessionContext.execute(sessionId, input.userId);
+    const qaTemplates = await this.listEnabledQaTemplates.execute();
 
     const streamInput: StreamChatInput = {
       message,
@@ -65,6 +68,7 @@ export class ChatStreamOrchestrator {
           role: m.role,
           content: m.content,
         })),
+        qaTemplates,
       },
     };
 

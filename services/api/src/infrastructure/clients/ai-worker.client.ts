@@ -8,6 +8,13 @@ export interface ChatStreamRequest {
   sessionContext?: {
     anchor?: Record<string, unknown> | null;
     recentMessages?: Array<{ role: string; content: string }>;
+    qaTemplates?: Array<{
+      templateId: string;
+      name: string;
+      preview: string;
+      keywords: string[];
+      priority: number;
+    }>;
   };
 }
 

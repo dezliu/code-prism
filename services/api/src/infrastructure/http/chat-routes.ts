@@ -10,6 +10,8 @@ import {
   PersistChatMessageUseCase,
 } from '../../application/chat/chat.use-cases.js';
 import { ChatRepository } from '../db/repositories/chat.repository.js';
+import { QaTemplateRepository } from '../db/repositories/qa-template.repository.js';
+import { ListEnabledQaTemplatesUseCase } from '../../application/template/template.use-cases.js';
 import {
   createJwtMiddleware,
   type AuthenticatedRequest,
@@ -36,6 +38,7 @@ export function createChatRoutes(deps: ChatRoutesDeps): Router {
   const streamChatUseCase = new StreamChatUseCase(deps.aiWorkerClient, cancelStore);
 
   const chatRepo = new ChatRepository();
+  const listEnabledQaTemplates = new ListEnabledQaTemplatesUseCase(new QaTemplateRepository());
   const orchestrator =
     deps.orchestrator ??
     (deps.usePersistence === false
@@ -45,6 +48,7 @@ export function createChatRoutes(deps: ChatRoutesDeps): Router {
           new CreateChatSessionUseCase(chatRepo),
           new GetSessionContextUseCase(chatRepo),
           new PersistChatMessageUseCase(chatRepo),
+          listEnabledQaTemplates,
         ));
 
   router.post(

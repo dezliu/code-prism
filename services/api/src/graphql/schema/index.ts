@@ -6,6 +6,8 @@ import { chatTypeDefs } from './chat.graphql.js';
 import { monitorTypeDefs } from './monitor.graphql.js';
 
 import { architectureTypeDefs } from './architecture.graphql.js';
+import { templateTypeDefs } from './template.graphql.js';
+import { alertTypeDefs } from './alert.graphql.js';
 
 export const typeDefs = [
   commonTypeDefs,
@@ -15,4 +17,6 @@ export const typeDefs = [
   chatTypeDefs,
   monitorTypeDefs,
   architectureTypeDefs,
+  templateTypeDefs,
+  alertTypeDefs,
 ];

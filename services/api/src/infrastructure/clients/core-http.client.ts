@@ -1,5 +1,7 @@
 /** Core 内部 HTTP 客户端 — Batch 5 P0 业务编排 */
 
+import { ApplicationError } from '../../domain/errors.js';
+
 export interface TestConnectionResult {
   ok: boolean;
   error?: string;
@@ -32,21 +34,48 @@ export interface CoreHttpClient {
 }
 
 export class CoreHttpClientImpl implements CoreHttpClient {
-  constructor(private readonly baseUrl: string) {}
+  private activeBaseUrl: string;
+
+  constructor(private readonly baseUrls: string[]) {
+    if (baseUrls.length === 0) {
+      throw new Error('CoreHttpClient requires at least one base URL');
+    }
+    this.activeBaseUrl = baseUrls[0]!;
+  }
 
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
-      ...init,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(init?.headers ?? {}),
-      },
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`core request failed (${res.status}): ${text}`);
+    const candidates = [
+      this.activeBaseUrl,
+      ...this.baseUrls.filter((url) => url !== this.activeBaseUrl),
+    ];
+    let lastError: unknown;
+
+    for (const baseUrl of candidates) {
+      const url = `${baseUrl}${path}`;
+      try {
+        const res = await fetch(url, {
+          ...init,
+          headers: {
+            'Content-Type': 'application/json',
+            ...(init?.headers ?? {}),
+          },
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(`core request failed (${res.status}): ${text}`);
+        }
+        this.activeBaseUrl = baseUrl;
+        return (await res.json()) as T;
+      } catch (error) {
+        lastError = error;
+      }
     }
-    return res.json() as Promise<T>;
+
+    throw new ApplicationError(
+      'Core 服务不可达。本地开发请先启动：cd services/core && go run ./cmd/server（若 8080 被占用，Core 会监听 18080，API 将自动尝试）',
+      'CORE_UNAVAILABLE',
+      lastError,
+    );
   }
 
   async testConnection(input: {
@@ -113,9 +142,26 @@ export class CoreHttpClientStub implements CoreHttpClient {
   }
 }
 
-export function createCoreHttpClient(baseUrl: string): CoreHttpClient {
+export function resolveCoreHttpBaseUrls(): string[] {
+  if (process.env.CORE_HTTP_URL) {
+    return [process.env.CORE_HTTP_URL.replace(/\/$/, '')];
+  }
+  const primary = `http://localhost:${process.env.CORE_HTTP_PORT ?? '8080'}`;
+  const urls = [primary];
+  if (!process.env.CORE_HTTP_PORT || process.env.CORE_HTTP_PORT === '8080') {
+    urls.push('http://localhost:18080');
+  }
+  return [...new Set(urls)];
+}
+
+export function createCoreHttpClient(baseUrls?: string | string[]): CoreHttpClient {
   if (process.env.CORE_HTTP_STUB === 'true') {
     return new CoreHttpClientStub();
   }
-  return new CoreHttpClientImpl(baseUrl);
+  const urls = baseUrls
+    ? Array.isArray(baseUrls)
+      ? baseUrls
+      : [baseUrls]
+    : resolveCoreHttpBaseUrls();
+  return new CoreHttpClientImpl(urls);
 }

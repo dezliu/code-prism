@@ -13,6 +13,10 @@ export class RepoMetadataModel extends BaseModel {
   createdAt!: Date;
   updatedAt!: Date;
 
+  static get jsonAttributes() {
+    return ['tags'];
+  }
+
   static get idColumn() {
     return 'repo_id';
   }

@@ -24,6 +24,20 @@ import type {
   GenerateArchDraftUseCase,
   PublishOfficialArchitectureUseCase,
 } from '../../application/architecture/architecture.use-cases.js';
+import type {
+  ListQaTemplatesUseCase,
+  ListEnabledQaTemplatesUseCase,
+  CreateQaTemplateUseCase,
+  UpdateQaTemplateUseCase,
+  DeleteQaTemplateUseCase,
+  PreviewQaTemplateUseCase,
+} from '../../application/template/template.use-cases.js';
+import type {
+  ListAlertRulesUseCase,
+  CreateAlertRuleUseCase,
+  UpdateAlertRuleUseCase,
+  DeleteAlertRuleUseCase,
+} from '../../application/alert/alert.use-cases.js';
 import { ApplicationError } from '../../domain/errors.js';
 import type { JwtPayload } from '../../infrastructure/auth/jwt.js';
 
@@ -56,6 +70,16 @@ export interface GraphQLContext {
   getArchitectureDraftUseCase: GetArchitectureDraftUseCase;
   generateArchDraftUseCase: GenerateArchDraftUseCase;
   publishOfficialArchitectureUseCase: PublishOfficialArchitectureUseCase;
+  listQaTemplatesUseCase: ListQaTemplatesUseCase;
+  listEnabledQaTemplatesUseCase: ListEnabledQaTemplatesUseCase;
+  createQaTemplateUseCase: CreateQaTemplateUseCase;
+  updateQaTemplateUseCase: UpdateQaTemplateUseCase;
+  deleteQaTemplateUseCase: DeleteQaTemplateUseCase;
+  previewQaTemplateUseCase: PreviewQaTemplateUseCase;
+  listAlertRulesUseCase: ListAlertRulesUseCase;
+  createAlertRuleUseCase: CreateAlertRuleUseCase;
+  updateAlertRuleUseCase: UpdateAlertRuleUseCase;
+  deleteAlertRuleUseCase: DeleteAlertRuleUseCase;
 }
 
 function requireAuth(ctx: GraphQLContext) {
@@ -160,6 +184,30 @@ export function createResolvers() {
             return null;
           }
         }),
+      qaTemplates: (_: unknown, __: unknown, ctx: GraphQLContext) =>
+        withHandler(() => {
+          requireAdmin(ctx);
+          return ctx.listQaTemplatesUseCase.execute();
+        }),
+      previewQaTemplate: (
+        _: unknown,
+        args: { id: string; sampleQuestion: string },
+        ctx: GraphQLContext,
+      ) =>
+        withHandler(async () => {
+          requireAdmin(ctx);
+          const templates = await ctx.listQaTemplatesUseCase.execute();
+          const template = templates.find((t) => t.id === args.id);
+          if (!template) {
+            throw new ApplicationError('模板不存在', 'NOT_FOUND');
+          }
+          return ctx.previewQaTemplateUseCase.execute(template, args.sampleQuestion);
+        }),
+      alertRules: (_: unknown, __: unknown, ctx: GraphQLContext) =>
+        withHandler(() => {
+          requireAdmin(ctx);
+          return ctx.listAlertRulesUseCase.execute();
+        }),
     },
     Mutation: {
       _empty: () => null,
@@ -246,6 +294,58 @@ export function createResolvers() {
         withHandler(() => {
           requireAdmin(ctx);
           return ctx.resolveArchDriftUseCase.execute(args.id, args.status);
+        }),
+      createQaTemplate: (
+        _: unknown,
+        args: { input: Parameters<CreateQaTemplateUseCase['execute']>[0] },
+        ctx: GraphQLContext,
+      ) =>
+        withHandler(() => {
+          const auth = requireAdmin(ctx);
+          return ctx.createQaTemplateUseCase.execute({
+            ...args.input,
+            createdBy: auth.userId,
+          });
+        }),
+      updateQaTemplate: (
+        _: unknown,
+        args: { id: string; input: Parameters<UpdateQaTemplateUseCase['execute']>[1] },
+        ctx: GraphQLContext,
+      ) =>
+        withHandler(() => {
+          requireAdmin(ctx);
+          return ctx.updateQaTemplateUseCase.execute(args.id, args.input);
+        }),
+      deleteQaTemplate: (_: unknown, args: { id: string }, ctx: GraphQLContext) =>
+        withHandler(() => {
+          requireAdmin(ctx);
+          return ctx.deleteQaTemplateUseCase.execute(args.id);
+        }),
+      createAlertRule: (
+        _: unknown,
+        args: { input: Parameters<CreateAlertRuleUseCase['execute']>[0] },
+        ctx: GraphQLContext,
+      ) =>
+        withHandler(() => {
+          const auth = requireAdmin(ctx);
+          return ctx.createAlertRuleUseCase.execute({
+            ...args.input,
+            createdBy: auth.userId,
+          });
+        }),
+      updateAlertRule: (
+        _: unknown,
+        args: { id: string; input: Parameters<UpdateAlertRuleUseCase['execute']>[1] },
+        ctx: GraphQLContext,
+      ) =>
+        withHandler(() => {
+          requireAdmin(ctx);
+          return ctx.updateAlertRuleUseCase.execute(args.id, args.input);
+        }),
+      deleteAlertRule: (_: unknown, args: { id: string }, ctx: GraphQLContext) =>
+        withHandler(() => {
+          requireAdmin(ctx);
+          return ctx.deleteAlertRuleUseCase.execute(args.id);
         }),
     },
   };

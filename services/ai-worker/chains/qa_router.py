@@ -62,7 +62,7 @@ async def stream_qa_with_rag(
 
     yield "status", {"phase": "understanding", "intents": intents}
 
-    for hint in match_templates(resolved_message):
+    for hint in match_templates(resolved_message, templates=session_context.get("qaTemplates") if session_context else None):
         yield "template_hint", hint
 
     yield "status", {"phase": "retrieving"}

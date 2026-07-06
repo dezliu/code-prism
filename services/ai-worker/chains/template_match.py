@@ -28,27 +28,35 @@ DEFAULT_TEMPLATES: list[dict[str, Any]] = [
 ]
 
 
-def match_templates(message: str, *, limit: int = 2) -> list[dict[str, Any]]:
+def match_templates(
+    message: str,
+    *,
+    templates: list[dict[str, Any]] | None = None,
+    limit: int = 2,
+) -> list[dict[str, Any]]:
     """Return template hints scored by keyword overlap with the user message."""
-    scored: list[tuple[int, dict[str, Any]]] = []
+    source = templates if templates else DEFAULT_TEMPLATES
+    scored: list[tuple[int, int, dict[str, Any]]] = []
     lower = message.lower()
 
-    for template in DEFAULT_TEMPLATES:
+    for template in source:
         score = 0
-        for kw in template["keywords"]:
+        keywords = template.get("keywords") or []
+        for kw in keywords:
             if kw.lower() in lower or re.search(re.escape(kw), message, re.IGNORECASE):
                 score += 1
         if score > 0:
-            scored.append((score, template))
+            priority = int(template.get("priority") or 0)
+            scored.append((score, priority, template))
 
-    scored.sort(key=lambda item: item[0], reverse=True)
+    scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
     hints: list[dict[str, Any]] = []
-    for _, template in scored[:limit]:
+    for _, _, template in scored[:limit]:
         hints.append(
             {
-                "templateId": template["templateId"],
+                "templateId": template.get("templateId") or template.get("id", ""),
                 "name": template["name"],
-                "preview": template["preview"],
+                "preview": template.get("preview") or template.get("previewTemplate", ""),
             }
         )
     return hints
