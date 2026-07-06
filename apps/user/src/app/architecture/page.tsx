@@ -1,9 +1,8 @@
 'use client';
 
-import { message } from 'antd';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArchitectureGraph, type GraphData, type GraphNode } from '@lingprism/graph-viz';
+import { ArchitectureGraphViewer, type GraphData, type GraphNode } from '@lingprism/graph-viz';
 import { getAuthToken } from '@lingprism/shared';
 import { GRAPHQL_ENDPOINT } from '@lingprism/graphql/constants';
 import { fetchCurrentUser, logout, type AuthUser } from '@lingprism/graphql';
@@ -19,6 +18,7 @@ interface ArchitectureItem {
 async function gql<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
   const res = await fetch(GRAPHQL_ENDPOINT, {
     method: 'POST',
+    cache: 'no-store',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${getAuthToken()}`,
@@ -104,12 +104,12 @@ export default function ArchitecturePage() {
 
         <div className="user-arch-panel">
           {current ? (
-            <ArchitectureGraph
+            <ArchitectureGraphViewer
+              key={current.repoId}
               data={current.graphData}
               selectedNodeId={selectedNode?.id}
               onNodeClick={(node) => {
                 setSelectedNode(node);
-                message.info(`已选择节点：${node.label}`);
               }}
             />
           ) : (

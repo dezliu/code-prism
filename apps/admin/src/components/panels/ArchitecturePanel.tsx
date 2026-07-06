@@ -1,10 +1,10 @@
 'use client';
 
 import {
-  Badge, Button, Card, Form, Input, Modal, Select, Space, Table, Tag, message, notification,
+  Badge, Button, Card, Form, Input, Modal, Select, Space, Table, Tabs, Tag, message, notification,
 } from 'antd';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArchitectureGraph, type GraphData } from '@lingprism/graph-viz';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ArchitectureGraphViewer, type GraphData } from '@lingprism/graph-viz';
 import {
   ARCH_PHASE_LABELS,
   enqueueArchGenerateJob,
@@ -46,16 +46,28 @@ const JOB_STATUS_LABELS: Record<string, string> = {
   cancelled: '已取消',
 };
 
+const ACTIVE_JOB_STATUSES = new Set(['queued', 'running']);
+const FAILED_JOB_STATUSES = new Set(['failed', 'cancelled']);
+
+type JobListTab = 'active' | 'completed' | 'failed';
+
 export function ArchitecturePanel() {
   const [items, setItems] = useState<AdminArchitectureItem[]>([]);
   const [repos, setRepos] = useState<RepoOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [jobListOpen, setJobListOpen] = useState(false);
+  const [jobListTab, setJobListTab] = useState<JobListTab>('active');
+  const [previewGraph, setPreviewGraph] = useState<{ title: string; data: GraphData } | null>(null);
   const [editRepoId, setEditRepoId] = useState<string | null>(null);
   const [graph, setGraph] = useState<GraphData | null>(null);
   const [versionNote, setVersionNote] = useState('');
   const [publishing, setPublishing] = useState(false);
+  /** 生成成功后草稿已入库，但 items 列表 state 可能尚未刷新 */
+  const [draftReady, setDraftReady] = useState(false);
+  const [graphLoading, setGraphLoading] = useState(false);
+  const editLoadSeqRef = useRef(0);
+  const graphGenSeqRef = useRef(0);
   const [addForm] = Form.useForm();
 
   const {
@@ -66,7 +78,7 @@ export function ArchitecturePanel() {
     reset: resetSse,
   } = useArchGenerateSSE();
 
-  const loadItems = async () => {
+  const loadItems = async (): Promise<AdminArchitectureItem[]> => {
     setLoading(true);
     try {
       const data = await gql<{ adminArchitectures: AdminArchitectureItem[] }>(`
@@ -80,8 +92,10 @@ export function ArchitecturePanel() {
         }
       `);
       setItems(data.adminArchitectures);
+      return data.adminArchitectures;
     } catch (error) {
       message.error(error instanceof Error ? error.message : '加载失败');
+      return [];
     } finally {
       setLoading(false);
     }
@@ -97,7 +111,9 @@ export function ArchitecturePanel() {
         });
         void loadItems();
         if (editRepoId === job.repoId && job.graphData) {
+          graphGenSeqRef.current += 1;
           setGraph(job.graphData as GraphData);
+          setDraftReady(true);
         }
       } else if (job.status === 'failed') {
         notification.error({
@@ -110,7 +126,7 @@ export function ArchitecturePanel() {
     [editRepoId],
   );
 
-  const { jobs, activeCount, refresh: refreshJobs } = useArchGenerateJobPoll({
+  const { jobs, activeCount, loading: jobsLoading, refresh: refreshJobs } = useArchGenerateJobPoll({
     onJobFinished: handleJobFinished,
   });
 
@@ -150,11 +166,13 @@ export function ArchitecturePanel() {
     resetSse();
     const result = await generateStream(repoId);
     if (result) {
+      graphGenSeqRef.current += 1;
       setGraph(result);
+      setDraftReady(true);
       message.success('架构图草稿已生成');
       await loadItems();
       if (openEditAfter) {
-        await openEditModal(repoId);
+        await openEditModal(repoId, { keepGraph: true });
       }
     }
   };
@@ -184,10 +202,30 @@ export function ArchitecturePanel() {
     await runStreamGenerate(values.repoId, true);
   };
 
-  const openEditModal = async (repoId: string) => {
-    setEditRepoId(repoId);
+  const closeEditModal = () => {
+    editLoadSeqRef.current += 1;
+    setEditRepoId(null);
     setGraph(null);
+    setDraftReady(false);
+    setGraphLoading(false);
     setVersionNote('');
+  };
+
+  const openEditModal = async (
+    repoId: string,
+    options?: { keepGraph?: boolean },
+  ) => {
+    const loadSeq = ++editLoadSeqRef.current;
+    const genSeqAtOpen = graphGenSeqRef.current;
+
+    setEditRepoId(repoId);
+    if (!options?.keepGraph) {
+      setGraph(null);
+      setDraftReady(false);
+    }
+    setVersionNote('');
+    setGraphLoading(true);
+
     try {
       const data = await gql<{
         architectureDraft: { graphData: GraphData } | null;
@@ -203,13 +241,30 @@ export function ArchitecturePanel() {
           }
         }
       `, { repoId });
+
+      if (loadSeq !== editLoadSeqRef.current) {
+        return;
+      }
+      if (graphGenSeqRef.current > genSeqAtOpen) {
+        return;
+      }
+
       const draft = data.architectureDraft?.graphData ?? null;
-      setGraph(draft ?? data.officialArchitecture?.graphData ?? null);
+      if (!options?.keepGraph) {
+        setGraph(draft ?? data.officialArchitecture?.graphData ?? null);
+      }
+      setDraftReady(!!draft || !!options?.keepGraph);
       if (!draft && data.officialArchitecture?.versionNote) {
         setVersionNote(data.officialArchitecture.versionNote);
       }
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '加载架构图失败');
+      if (loadSeq === editLoadSeqRef.current) {
+        message.error(error instanceof Error ? error.message : '加载架构图失败');
+      }
+    } finally {
+      if (loadSeq === editLoadSeqRef.current) {
+        setGraphLoading(false);
+      }
     }
   };
 
@@ -218,11 +273,14 @@ export function ArchitecturePanel() {
     await runStreamGenerate(editRepoId);
   };
 
-  const onBackgroundGenerate = async (repoId: string) => {
+  const onBackgroundGenerate = async (repoId: string, closeEditModal = false) => {
     try {
       await enqueueArchGenerateJob(repoId);
       message.success('已加入后台生成队列');
       void refreshJobs();
+      if (closeEditModal) {
+        closeEditModal();
+      }
     } catch (error) {
       message.error(error instanceof Error ? error.message : '提交失败');
     }
@@ -241,7 +299,7 @@ export function ArchitecturePanel() {
         }
       `, { repoId: editRepoId, versionNote });
       message.success('官方架构图已发布');
-      setEditRepoId(null);
+      closeEditModal();
       await loadItems();
     } catch (error) {
       message.error(error instanceof Error ? error.message : '发布失败');
@@ -251,8 +309,99 @@ export function ArchitecturePanel() {
   };
 
   const editItem = items.find((item) => item.repoId === editRepoId);
-  const hasDraft = !!editItem?.draft;
+  const hasDraft = !!editItem?.draft || draftReady;
   const phaseLabel = sseStatus ? ARCH_PHASE_LABELS[sseStatus.phase] : null;
+
+  const activeJobs = useMemo(
+    () => jobs.filter((job) => ACTIVE_JOB_STATUSES.has(job.status)),
+    [jobs],
+  );
+  const completedJobs = useMemo(
+    () => jobs.filter((job) => job.status === 'completed'),
+    [jobs],
+  );
+  const failedJobs = useMemo(
+    () => jobs.filter((job) => FAILED_JOB_STATUSES.has(job.status)),
+    [jobs],
+  );
+
+  const jobTableColumns = useMemo(() => {
+    const base = [
+      {
+        title: '代码库',
+        dataIndex: 'repoName',
+        render: (name: string | null, row: ArchGenerateJob) => name ?? row.repoId.slice(0, 8),
+      },
+      {
+        title: '状态',
+        dataIndex: 'status',
+        width: 160,
+        render: (status: string, row: ArchGenerateJob) => (
+          <Tag color={status === 'completed' ? 'green' : status === 'failed' || status === 'cancelled' ? 'red' : 'blue'}>
+            {JOB_STATUS_LABELS[status] ?? status}
+            {row.phase ? ` · ${ARCH_PHASE_LABELS[row.phase as keyof typeof ARCH_PHASE_LABELS] ?? row.phase}` : ''}
+          </Tag>
+        ),
+      },
+      {
+        title: '节点数',
+        width: 80,
+        render: (_: unknown, row: ArchGenerateJob) => row.graphData?.nodes?.length ?? '—',
+      },
+      {
+        title: '时间',
+        dataIndex: 'createdAt',
+        width: 160,
+        render: (v: string) => new Date(v).toLocaleString(),
+      },
+    ];
+
+    if (jobListTab === 'failed') {
+      return [
+        ...base.slice(0, 2),
+        {
+          title: '错误信息',
+          dataIndex: 'errorMessage',
+          ellipsis: true,
+          render: (msg: string | null) => msg ?? '—',
+        },
+        ...base.slice(3),
+      ];
+    }
+
+    if (jobListTab === 'completed') {
+      return [
+        ...base,
+        {
+          title: '操作',
+          width: 100,
+          render: (_: unknown, row: ArchGenerateJob) => (
+            row.graphData ? (
+              <Button
+                type="link"
+                size="small"
+                style={{ padding: 0 }}
+                onClick={() => setPreviewGraph({
+                  title: row.repoName ?? row.repoId.slice(0, 8),
+                  data: row.graphData as GraphData,
+                })}
+              >
+                查看
+              </Button>
+            ) : '—'
+          ),
+        },
+      ];
+    }
+
+    return base;
+  }, [jobListTab]);
+
+  const filteredJobs = jobListTab === 'active'
+    ? activeJobs
+    : jobListTab === 'completed'
+      ? completedJobs
+      : failedJobs;
 
   return (
     <>
@@ -264,7 +413,13 @@ export function ArchitecturePanel() {
           extra={(
             <Space>
               <Badge count={activeCount} size="small">
-                <Button onClick={() => setJobListOpen(true)}>后台任务</Button>
+                <Button onClick={() => {
+                  setJobListTab(activeCount > 0 ? 'active' : 'completed');
+                  setJobListOpen(true);
+                }}
+                >
+                  后台任务
+                </Button>
               </Badge>
               <Button type="primary" onClick={openAddModal}>添加架构图</Button>
             </Space>
@@ -395,55 +550,73 @@ export function ArchitecturePanel() {
         open={jobListOpen}
         onCancel={() => setJobListOpen(false)}
         footer={<Button onClick={() => setJobListOpen(false)}>关闭</Button>}
-        width={720}
+        width={800}
         destroyOnClose
       >
-        <Table
-          rowKey="id"
-          size="small"
-          dataSource={jobs}
-          pagination={{ pageSize: 8 }}
-          locale={{ emptyText: '暂无生成任务' }}
-          columns={[
+        <Tabs
+          activeKey={jobListTab}
+          onChange={(key) => setJobListTab(key as JobListTab)}
+          items={[
             {
-              title: '代码库',
-              dataIndex: 'repoName',
-              render: (name: string | null, row) => name ?? row.repoId.slice(0, 8),
+              key: 'active',
+              label: `生成中 (${activeJobs.length})`,
             },
             {
-              title: '状态',
-              dataIndex: 'status',
-              width: 100,
-              render: (status: string, row) => (
-                <Tag color={status === 'completed' ? 'green' : status === 'failed' ? 'red' : 'blue'}>
-                  {JOB_STATUS_LABELS[status] ?? status}
-                  {row.phase ? ` · ${ARCH_PHASE_LABELS[row.phase as keyof typeof ARCH_PHASE_LABELS] ?? row.phase}` : ''}
-                </Tag>
-              ),
+              key: 'completed',
+              label: `完成 (${completedJobs.length})`,
             },
             {
-              title: '节点数',
-              width: 80,
-              render: (_, row) => row.graphData?.nodes?.length ?? '—',
-            },
-            {
-              title: '时间',
-              dataIndex: 'createdAt',
-              width: 160,
-              render: (v: string) => new Date(v).toLocaleString(),
+              key: 'failed',
+              label: `失败 (${failedJobs.length})`,
             },
           ]}
         />
+        <Table
+          rowKey="id"
+          size="small"
+          loading={jobsLoading}
+          dataSource={filteredJobs}
+          columns={jobTableColumns}
+          pagination={{ pageSize: 8 }}
+          locale={{
+            emptyText: jobListTab === 'active'
+              ? '暂无进行中的任务'
+              : jobListTab === 'completed'
+                ? '暂无已完成任务'
+                : '暂无失败任务',
+          }}
+          style={{ marginTop: 8 }}
+        />
+      </Modal>
+
+      <Modal
+        title={`架构图预览 · ${previewGraph?.title ?? ''}`}
+        open={!!previewGraph}
+        onCancel={() => setPreviewGraph(null)}
+        footer={<Button onClick={() => setPreviewGraph(null)}>关闭</Button>}
+        width="92vw"
+        style={{ top: 24, maxWidth: 1400 }}
+        destroyOnClose
+      >
+        {previewGraph && (
+          <ArchitectureGraphViewer data={previewGraph.data} height={560} />
+        )}
       </Modal>
 
       <Modal
         title={editItem ? `架构图 · ${editItem.repoName ?? editItem.repoId.slice(0, 8)}` : '架构图编辑'}
         open={!!editRepoId}
-        onCancel={() => setEditRepoId(null)}
+        onCancel={closeEditModal}
         width={900}
         footer={(
           <Space wrap>
-            <Button onClick={() => setEditRepoId(null)}>关闭</Button>
+            <Button onClick={closeEditModal}>关闭</Button>
+            <Button
+              disabled={streaming}
+              onClick={() => editRepoId && void onBackgroundGenerate(editRepoId, true)}
+            >
+              后台生成
+            </Button>
             <Button loading={streaming} onClick={onRegenerate}>重新生成</Button>
             <Input
               placeholder="发布说明，如 2026-Q2 架构"
@@ -461,13 +634,16 @@ export function ArchitecturePanel() {
         {streaming && phaseLabel && (
           <p style={{ color: '#1677ff', marginBottom: 12 }}>{phaseLabel}</p>
         )}
-        {graph ? (
-          <ArchitectureGraph data={graph} />
-        ) : (
+        {graphLoading && !graph && (
+          <p style={{ color: '#999', textAlign: 'center', padding: '48px 0' }}>加载架构图…</p>
+        )}
+        {!graphLoading && graph ? (
+          <ArchitectureGraphViewer key={editRepoId ?? undefined} data={graph} />
+        ) : !graphLoading && !graph ? (
           <p style={{ color: '#999', textAlign: 'center', padding: '48px 0' }}>
             暂无架构图数据，请点击「重新生成」从代码库生成草稿
           </p>
-        )}
+        ) : null}
       </Modal>
     </>
   );

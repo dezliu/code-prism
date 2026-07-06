@@ -4,6 +4,7 @@ import { GRAPHQL_ENDPOINT } from '@lingprism/graphql/constants';
 export async function gql<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
   const res = await fetch(GRAPHQL_ENDPOINT, {
     method: 'POST',
+    cache: 'no-store',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${getAuthToken()}`,

@@ -223,35 +223,48 @@ export class PublishOfficialArchitectureUseCase {
   ) {}
 
   async execute(repoId: string, versionNote: string): Promise<ArchitectureView> {
-    const draft = await this.monitor.getDraftArchitecture(repoId);
-    if (!draft) {
-      throw new NotFoundError('ArchitectureDraft', repoId);
-    }
     const { GraphSnapshotModel } = await import(
       '../../infrastructure/db/models/graph-snapshot.model.js'
     );
 
-    const maxVersionRow = await GraphSnapshotModel.query()
-      .where('repo_id', repoId)
-      .max('version as maxVersion')
-      .first();
-    const nextVersion = Number((maxVersionRow as { maxVersion?: number })?.maxVersion ?? 0) + 1;
+    const published = await GraphSnapshotModel.transaction(async (trx) => {
+      const draft = await GraphSnapshotModel.query(trx)
+        .where('repo_id', repoId)
+        .where('is_official', false)
+        .orderBy('created_at', 'desc')
+        .first();
+      if (!draft) {
+        throw new NotFoundError('ArchitectureDraft', repoId);
+      }
 
-    await GraphSnapshotModel.query()
-      .where('repo_id', repoId)
-      .where('is_official', true)
-      .patch({ isOfficial: false });
+      const maxVersionRow = await GraphSnapshotModel.query(trx)
+        .where('repo_id', repoId)
+        .max('version as maxVersion')
+        .first();
+      const nextVersion = Number((maxVersionRow as { maxVersion?: number })?.maxVersion ?? 0) + 1;
 
-    await GraphSnapshotModel.query().findById(draft.id).patch({
-      isOfficial: true,
-      version: nextVersion,
-      versionNote,
-      publishedAt: new Date(),
+      await GraphSnapshotModel.query(trx)
+        .where('repo_id', repoId)
+        .where('is_official', true)
+        .patch({ isOfficial: false });
+
+      await GraphSnapshotModel.query(trx).findById(draft.id).patch({
+        isOfficial: true,
+        version: nextVersion,
+        versionNote,
+        publishedAt: new Date(),
+      });
+
+      return GraphSnapshotModel.query(trx)
+        .where('repo_id', repoId)
+        .where('is_official', true)
+        .orderBy('version', 'desc')
+        .first()
+        .throwIfNotFound();
     });
 
     const repo = await this.repos.findById(repoId);
     const meta = repo?.metadata as { displayName?: string } | undefined;
-    const published = await this.monitor.getOfficialArchitecture(repoId);
-    return toView(published!, meta?.displayName ?? repo?.name ?? null);
+    return toView(published, meta?.displayName ?? repo?.name ?? null);
   }
 }
