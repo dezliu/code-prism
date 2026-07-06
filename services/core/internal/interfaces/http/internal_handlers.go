@@ -28,6 +28,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/internal/index/enqueue", h.enqueueIndex)
 	mux.HandleFunc("/internal/index/remove", h.removeIndex)
 	mux.HandleFunc("/internal/search", h.handleSearch)
+	mux.HandleFunc("/internal/knowledge/index", h.indexKnowledgeDoc)
 	mux.HandleFunc("/internal/architecture/", h.architecture)
 }
 
@@ -127,6 +128,25 @@ func (h *Handler) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) indexKnowledgeDoc(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		DocID string `json:"docId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.DocID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "docId required"})
+		return
+	}
+	if err := h.searchSvc.IndexKnowledgeDoc(r.Context(), body.DocID); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "docId": body.DocID})
 }
 
 func (h *Handler) architecture(w http.ResponseWriter, r *http.Request) {

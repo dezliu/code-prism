@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   GenerateKnowledgeDocContentUseCase,
+  PublishKnowledgeDocUseCase,
   UpdateKnowledgeDocUseCase,
 } from './knowledge.use-cases.js';
 import type { KnowledgeDocRepository } from '../../infrastructure/db/repositories/knowledge-doc.repository.js';
@@ -24,6 +25,7 @@ function createMocks() {
   const docs = {
     findById: vi.fn().mockResolvedValue(doc),
     update: vi.fn().mockImplementation(async (_id, patch) => ({ ...doc, ...patch })),
+    publish: vi.fn().mockImplementation(async () => ({ ...doc, status: 'published' as const })),
   } as unknown as KnowledgeDocRepository;
 
   const repos = {
@@ -50,6 +52,7 @@ function createMocks() {
     search: vi.fn().mockResolvedValue([
       { type: 'code' as const, title: 'main.go', snippet: 'func main() {}', ref: 'main.go' },
     ]),
+    indexKnowledgeDoc: vi.fn().mockResolvedValue({ ok: true, docId: 'doc-1' }),
   } as unknown as CoreHttpClient;
 
   const aiWorker = {
@@ -105,5 +108,24 @@ describe('UpdateKnowledgeDocUseCase', () => {
 
     expect(docs.update).toHaveBeenCalledWith('doc-1', { repoIds: ['repo-1', 'repo-2'] });
     expect(result.repoIds).toEqual(['repo-1', 'repo-2']);
+  });
+});
+
+describe('PublishKnowledgeDocUseCase', () => {
+  it('should publish and sync vector index via core', async () => {
+    const { docs, core } = createMocks();
+    vi.mocked(docs.findById).mockResolvedValueOnce(createMocks().doc);
+    vi.mocked(docs.publish).mockResolvedValueOnce({
+      ...createMocks().doc,
+      status: 'published',
+    });
+    core.indexKnowledgeDoc = vi.fn().mockResolvedValue({ ok: true, docId: 'doc-1' });
+
+    const useCase = new PublishKnowledgeDocUseCase(docs, core);
+    const result = await useCase.execute('doc-1');
+
+    expect(docs.publish).toHaveBeenCalledWith('doc-1');
+    expect(core.indexKnowledgeDoc).toHaveBeenCalledWith('doc-1');
+    expect(result.status).toBe('published');
   });
 });

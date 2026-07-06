@@ -61,6 +61,27 @@ async function resolveRepoNames(repos: RepoRepository, repoIds: string[]): Promi
   return names;
 }
 
+async function syncPublishedKnowledgeDocIndex(
+  core: CoreHttpClient | undefined,
+  docId: string,
+): Promise<void> {
+  if (!core) {
+    return;
+  }
+  try {
+    await core.indexKnowledgeDoc(docId);
+  } catch (error) {
+    console.warn(
+      JSON.stringify({
+        level: 'warn',
+        msg: 'knowledge doc vector index failed',
+        docId,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  }
+}
+
 export class ListKnowledgeDocsUseCase {
   constructor(private readonly docs: KnowledgeDocRepository) {}
 
@@ -95,7 +116,10 @@ export class CreateKnowledgeDocUseCase {
 }
 
 export class UpdateKnowledgeDocUseCase {
-  constructor(private readonly docs: KnowledgeDocRepository) {}
+  constructor(
+    private readonly docs: KnowledgeDocRepository,
+    private readonly core?: CoreHttpClient,
+  ) {}
 
   async execute(id: string, input: UpdateKnowledgeDocInput): Promise<KnowledgeDocSummary> {
     const doc = await this.docs.findById(id);
@@ -111,12 +135,18 @@ export class UpdateKnowledgeDocUseCase {
       ...(input.docType !== undefined ? { docType: input.docType } : {}),
       ...(input.repoIds !== undefined ? { repoIds: input.repoIds } : {}),
     });
+    if (updated.status === 'published') {
+      await syncPublishedKnowledgeDocIndex(this.core, id);
+    }
     return toSummary(updated, true);
   }
 }
 
 export class PublishKnowledgeDocUseCase {
-  constructor(private readonly docs: KnowledgeDocRepository) {}
+  constructor(
+    private readonly docs: KnowledgeDocRepository,
+    private readonly core?: CoreHttpClient,
+  ) {}
 
   async execute(id: string): Promise<KnowledgeDocSummary> {
     const doc = await this.docs.findById(id);
@@ -124,6 +154,7 @@ export class PublishKnowledgeDocUseCase {
       throw new NotFoundError('KnowledgeDoc', id);
     }
     const published = await this.docs.publish(id);
+    await syncPublishedKnowledgeDocIndex(this.core, id);
     return toSummary(published);
   }
 }

@@ -23,6 +23,7 @@ type PointPayload struct {
 	Symbol   string `json:"symbol"`
 	Kind     string `json:"kind"`
 	Snippet  string `json:"snippet"`
+	DocID    string `json:"docId"`
 }
 
 type SearchHit struct {
@@ -137,10 +138,44 @@ func (c *Client) Search(ctx context.Context, vector []float32, limit int) ([]Sea
 				Symbol:   fmt.Sprint(item.Payload["symbol"]),
 				Kind:     fmt.Sprint(item.Payload["kind"]),
 				Snippet:  fmt.Sprint(item.Payload["snippet"]),
+				DocID:    fmt.Sprint(item.Payload["docId"]),
 			},
 		})
 	}
 	return hits, nil
+}
+
+// DeleteByDocID removes all vector points whose payload.docId matches.
+func (c *Client) DeleteByDocID(ctx context.Context, docID string) error {
+	if docID == "" {
+		return nil
+	}
+	body, _ := json.Marshal(map[string]interface{}{
+		"filter": map[string]interface{}{
+			"must": []map[string]interface{}{
+				{
+					"key":   "docId",
+					"match": map[string]interface{}{"value": docID},
+				},
+			},
+		},
+	})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		fmt.Sprintf("%s/collections/%s/points/delete?wait=true", c.baseURL, c.collection), bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		raw, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("delete points: %s", string(raw))
+	}
+	return nil
 }
 
 // DeleteByRepoID removes all vector points whose payload.repoId matches.

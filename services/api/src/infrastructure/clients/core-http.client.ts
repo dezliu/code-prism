@@ -52,6 +52,7 @@ export interface CoreHttpClient {
   enqueueIndex(repoId: string): Promise<EnqueueIndexResult>;
   removeIndex(repoId: string): Promise<RemoveIndexResult>;
   search(query: string, repoIds?: string[]): Promise<SearchHit[]>;
+  indexKnowledgeDoc(docId: string): Promise<{ ok: boolean; docId: string }>;
   buildDocContext(repoIds: string[]): Promise<DocContextResult>;
   generateArchDraft(repoId: string): Promise<{ snapshotId: string }>;
 }
@@ -136,6 +137,13 @@ export class CoreHttpClientImpl implements CoreHttpClient {
     return data.hits;
   }
 
+  async indexKnowledgeDoc(docId: string): Promise<{ ok: boolean; docId: string }> {
+    return this.request('/internal/knowledge/index', {
+      method: 'POST',
+      body: JSON.stringify({ docId }),
+    });
+  }
+
   async buildDocContext(repoIds: string[]): Promise<DocContextResult> {
     return this.request('/internal/repos/doc-context', {
       method: 'POST',
@@ -177,6 +185,10 @@ export class CoreHttpClientStub implements CoreHttpClient {
         ref: 'doc-mock-1',
       },
     ];
+  }
+
+  async indexKnowledgeDoc(docId: string): Promise<{ ok: boolean; docId: string }> {
+    return { ok: true, docId };
   }
 
   async buildDocContext(repoIds: string[]): Promise<DocContextResult> {

@@ -45,6 +45,19 @@ func (s *SearchService) Search(ctx context.Context, query string, repoIDs []stri
 		qdrantHits, err := s.qdrant.Search(ctx, vec, 8)
 		if err == nil {
 			for _, hit := range qdrantHits {
+				if hit.Payload.Kind == "knowledge_doc" {
+					if len(repoIDs) > 0 && hit.Payload.RepoID != "" && !contains(repoIDs, hit.Payload.RepoID) {
+						continue
+					}
+					hits = append(hits, SearchHit{
+						Type:    "doc",
+						Title:   hit.Payload.Symbol,
+						Snippet: hit.Payload.Snippet,
+						Ref:     hit.Payload.DocID,
+						Score:   hit.Score,
+					})
+					continue
+				}
 				if len(repoIDs) > 0 {
 					if !contains(repoIDs, hit.Payload.RepoID) {
 						continue

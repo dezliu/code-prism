@@ -168,7 +168,7 @@ export default function ChatPageInner() {
       return;
     }
 
-    if (chat.streaming) {
+    if (chat.streaming || chat.content) {
       return;
     }
 
@@ -178,7 +178,6 @@ export default function ChatPageInner() {
       .then((list) => {
         if (!cancelled) {
           setMessages(list);
-          chat.reset();
         }
       })
       .finally(() => {
@@ -190,8 +189,8 @@ export default function ChatPageInner() {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset only when switching sessions
-  }, [sessionId, chat.streaming]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload history when switching sessions
+  }, [sessionId, chat.streaming, chat.content]);
 
   useEffect(() => {
     if (!chat.sessionInfo) return;
@@ -235,10 +234,19 @@ export default function ChatPageInner() {
           interrupted: chat.interrupted,
         },
       ]);
+    } else if (chat.error) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `assistant-error-${Date.now()}`,
+          role: 'assistant',
+          content: chat.error,
+        },
+      ]);
     }
     chat.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- finalize one streaming turn
-  }, [chat.streaming, chat.content, chat.sources, chat.interrupted]);
+  }, [chat.streaming, chat.content, chat.sources, chat.interrupted, chat.error]);
 
   const handleSend = async () => {
     const message = input.trim();

@@ -216,6 +216,22 @@ async def stream_qa_with_rag(
                     yield "token", {"text": text}
 
     answer = "".join(collected)
+    if not answer.strip():
+        answer = _build_no_context_fallback(
+            resolved_message,
+            retrieval_log,
+            llm_configured=True,
+        )
+        for char in answer:
+            if is_cancelled and is_cancelled():
+                yield "done", {
+                    "messageId": str(uuid.uuid4()),
+                    "interrupted": True,
+                    "anchor": anchor.to_dict() if anchor else None,
+                }
+                return
+            yield "token", {"text": char}
+
     new_anchor = extract_anchor_from_answer(answer, anchor)
     yield "done", {
         "messageId": str(uuid.uuid4()),
