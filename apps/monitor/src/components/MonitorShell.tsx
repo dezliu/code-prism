@@ -4,11 +4,7 @@ import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { AppNav, TopbarBrand } from '@lingprism/ui';
 
-interface MonitorShellProps {
-  children: ReactNode;
-}
-
-export function MonitorShell({ children }: MonitorShellProps) {
+function useLiveClock() {
   const [clock, setClock] = useState('--:--:--');
 
   useEffect(() => {
@@ -19,6 +15,21 @@ export function MonitorShell({ children }: MonitorShellProps) {
     const id = setInterval(update, 1000);
     return () => clearInterval(id);
   }, []);
+
+  return clock;
+}
+
+export function MonitorLiveTime({ className }: { className?: string }) {
+  const clock = useLiveClock();
+  return <span className={className}>{clock}</span>;
+}
+
+interface MonitorShellProps {
+  children: ReactNode;
+}
+
+export function MonitorShell({ children }: MonitorShellProps) {
+  const clock = useLiveClock();
 
   return (
     <div className="monitor-app">

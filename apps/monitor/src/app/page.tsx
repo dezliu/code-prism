@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { fetchCurrentUser, logout, type AuthUser } from '@lingprism/graphql';
 import { getAuthToken } from '@lingprism/shared';
 import { GRAPHQL_ENDPOINT } from '@lingprism/graphql/constants';
-import { MonitorShell } from '../components/MonitorShell';
+import { MonitorShell, MonitorLiveTime } from '../components/MonitorShell';
 
 async function gql<T>(query: string): Promise<T> {
   const res = await fetch(GRAPHQL_ENDPOINT, {
@@ -229,7 +229,7 @@ export default function MonitorHomePage() {
         <div className="monitor-alert-log">
           {stats.failed > 0 ? (
             <div className="monitor-alert-row">
-              <span className="monitor-alert-time">{new Date().toLocaleTimeString('zh-CN', { hour12: false })}</span>
+              <MonitorLiveTime className="monitor-alert-time" />
               <span className="monitor-severity critical">严重</span>
               <span className="monitor-alert-msg">索引失败：{stats.failed} 个任务未完成</span>
               <span className="monitor-alert-project">indexer</span>
@@ -238,7 +238,7 @@ export default function MonitorHomePage() {
           ) : null}
           {stats.risk > 0 ? (
             <div className="monitor-alert-row">
-              <span className="monitor-alert-time">{new Date().toLocaleTimeString('zh-CN', { hour12: false })}</span>
+              <MonitorLiveTime className="monitor-alert-time" />
               <span className="monitor-severity warning">警告</span>
               <span className="monitor-alert-msg">健康度评分低于阈值 60 的项目共 {stats.risk} 个</span>
               <span className="monitor-alert-project">global</span>
@@ -246,7 +246,7 @@ export default function MonitorHomePage() {
             </div>
           ) : null}
           <div className="monitor-alert-row">
-            <span className="monitor-alert-time">{new Date().toLocaleTimeString('zh-CN', { hour12: false })}</span>
+            <MonitorLiveTime className="monitor-alert-time" />
             <span className="monitor-severity info">信息</span>
             <span className="monitor-alert-msg">看板数据已同步，纳管项目 {stats.repos} 个</span>
             <span className="monitor-alert-project">lingprism</span>
