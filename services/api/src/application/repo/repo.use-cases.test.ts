@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   CreateRepoUseCase,
   UpdateRepoMetadataUseCase,
+  DeleteRepoUseCase,
 } from './repo.use-cases';
 import { CoreHttpClientStub } from '../../infrastructure/clients/core-http.client';
 import type { RepoRepository } from '../../infrastructure/db/repositories/repo.repository';
@@ -55,6 +56,14 @@ function createMockRepoRepo(): RepoRepository {
     },
     setIndexStatus: async () => {},
     setEnabled: async () => {},
+    updateRepo: async (repoId, input) => {
+      const repo = store.get(repoId);
+      if (input.enabled !== undefined) repo.enabled = input.enabled;
+      return repo;
+    },
+    delete: async (repoId) => {
+      store.delete(repoId);
+    },
   } as unknown as RepoRepository;
 }
 
@@ -88,5 +97,19 @@ describe('UpdateRepoMetadataUseCase', () => {
     expect(result.displayName).toBe('支付中台服务');
     expect(result.indexedInSearch).toBe(true);
     expect(enqueueSpy).toHaveBeenCalledWith(created.id);
+  });
+});
+
+describe('DeleteRepoUseCase', () => {
+  it('deletes existing repo', async () => {
+    const repos = createMockRepoRepo();
+    const create = new CreateRepoUseCase(repos, new CoreHttpClientStub());
+    const created = await create.execute({
+      url: 'https://github.com/org/payment-service.git',
+      authType: 'https',
+    });
+    const ok = await new DeleteRepoUseCase(repos).execute(created.id);
+    expect(ok).toBe(true);
+    expect(await repos.findById(created.id)).toBeUndefined();
   });
 });

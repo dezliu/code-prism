@@ -27,7 +27,9 @@ export function ReposPanel() {
   const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [metaModal, setMetaModal] = useState<RepoRow | null>(null);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
   const [metaForm] = Form.useForm();
+  const [createForm] = Form.useForm();
 
   const loadRepos = async () => {
     setLoading(true);
@@ -71,10 +73,18 @@ export function ReposPanel() {
         },
       );
       message.success('仓库已创建并测试连接');
+      setCreateModalOpen(false);
+      createForm.resetFields();
       await loadRepos();
     } catch (error) {
       message.error(error instanceof Error ? error.message : '创建失败');
     }
+  };
+
+  const openCreateModal = () => {
+    createForm.resetFields();
+    createForm.setFieldsValue({ authType: 'https', defaultBranch: 'main' });
+    setCreateModalOpen(true);
   };
 
   const toggleIndexed = async (repoId: string, indexedInSearch: boolean) => {
@@ -145,6 +155,23 @@ export function ReposPanel() {
     }
   };
 
+  const deleteRepo = (row: RepoRow) => {
+    Modal.confirm({
+      title: '确认删除数据源？',
+      content: `将删除「${row.displayName || row.name}」，关联的元数据、架构图与索引记录将一并移除，此操作不可恢复。`,
+      okType: 'danger',
+      onOk: async () => {
+        try {
+          await gql(`mutation($repoId: ID!) { deleteRepo(repoId: $repoId) }`, { repoId: row.id });
+          message.success('数据源已删除');
+          await loadRepos();
+        } catch (error) {
+          message.error(error instanceof Error ? error.message : '删除失败');
+        }
+      },
+    });
+  };
+
   const toggleEnabled = async (repoId: string, enabled: boolean) => {
     try {
       await gql(
@@ -160,13 +187,13 @@ export function ReposPanel() {
 
   return (
     <>
-      <div className="admin-panel-grid">
-        <div className="admin-panel">
-          <Card
-            type="inner"
-            title="仓库列表"
-            className="admin-panel-inner"
-            extra={
+      <div className="admin-panel">
+        <Card
+          type="inner"
+          title="仓库列表"
+          className="admin-panel-inner"
+          extra={(
+            <Space>
               <Select
                 value={statusFilter}
                 onChange={setStatusFilter}
@@ -178,78 +205,91 @@ export function ReposPanel() {
                   { value: 'indexed', label: '已索引' },
                 ]}
               />
-            }
-          >
-            <Table
-              rowKey="id"
-              loading={loading}
-              dataSource={filteredRepos}
-              columns={[
-                { title: '名称', dataIndex: 'displayName', render: (_, row) => row.displayName || row.name },
-                { title: '地址', dataIndex: 'url', ellipsis: true },
-                {
-                  title: '语言分布',
-                  render: (_, row) => row.languageSummary
-                    ? Object.entries(row.languageSummary).slice(0, 3).map(([k, v]) => `${k}:${v}`).join(', ')
-                    : '-',
-                },
-                {
-                  title: '连接',
-                  dataIndex: 'connectionStatus',
-                  render: (v: string) => <Tag color={v === 'connected' ? 'green' : 'red'}>{v}</Tag>,
-                },
-                { title: '索引', dataIndex: 'indexStatus' },
-                {
-                  title: '纳入检索库',
-                  render: (_, row) => (
-                    <Switch checked={row.indexedInSearch} onChange={(checked) => toggleIndexed(row.id, checked)} />
-                  ),
-                },
-                {
-                  title: '启用',
-                  render: (_, row) => (
-                    <Switch checked={row.enabled} onChange={(checked) => toggleEnabled(row.id, checked)} />
-                  ),
-                },
-                {
-                  title: '操作',
-                  render: (_, row) => (
-                    <Space>
-                      <Button size="small" onClick={() => openMetaModal(row)}>元数据</Button>
-                      <Button size="small" onClick={() => retestConnection(row.id)}>重测</Button>
-                    </Space>
-                  ),
-                },
-              ]}
-            />
-          </Card>
-        </div>
-
-        <div className="admin-panel">
-          <Card type="inner" title="新增仓库配置" className="admin-panel-inner">
-            <Form layout="vertical" onFinish={onCreate}>
-              <Form.Item name="url" label="仓库地址" rules={[{ required: true, message: '请输入 Git 地址' }]}>
-                <Input placeholder="git@corp.example.com/repo.git" />
-              </Form.Item>
-              <Form.Item name="authType" label="认证方式" initialValue="https">
-                <Select options={[{ value: 'https', label: 'HTTPS Token' }, { value: 'ssh', label: 'SSH 密钥' }]} />
-              </Form.Item>
-              <Form.Item name="defaultBranch" label="默认分支" initialValue="main">
-                <Input placeholder="main" />
-              </Form.Item>
-              <Form.Item name="authToken" label="认证凭据">
-                <Input.Password placeholder="Token（可选）" />
-              </Form.Item>
-              <Form.Item>
-                <Space>
-                  <Button htmlType="submit">测试连接</Button>
-                  <Button type="primary" htmlType="submit">保存配置</Button>
-                </Space>
-              </Form.Item>
-            </Form>
-          </Card>
-        </div>
+              <Button type="primary" onClick={openCreateModal}>新增仓库</Button>
+            </Space>
+          )}
+        >
+          <Table
+            rowKey="id"
+            loading={loading}
+            dataSource={filteredRepos}
+            scroll={{ x: 1200 }}
+            columns={[
+              { title: '名称', dataIndex: 'displayName', width: 140, fixed: 'left', render: (_, row) => row.displayName || row.name },
+              { title: '地址', dataIndex: 'url', width: 240, ellipsis: true },
+              {
+                title: '语言分布',
+                width: 160,
+                render: (_, row) => row.languageSummary
+                  ? Object.entries(row.languageSummary).slice(0, 3).map(([k, v]) => `${k}:${v}`).join(', ')
+                  : '-',
+              },
+              {
+                title: '连接',
+                dataIndex: 'connectionStatus',
+                width: 100,
+                render: (v: string) => <Tag color={v === 'connected' ? 'green' : 'red'}>{v}</Tag>,
+              },
+              { title: '索引', dataIndex: 'indexStatus', width: 100 },
+              {
+                title: '纳入检索库',
+                width: 110,
+                render: (_, row) => (
+                  <Switch checked={row.indexedInSearch} onChange={(checked) => toggleIndexed(row.id, checked)} />
+                ),
+              },
+              {
+                title: '启用',
+                width: 80,
+                render: (_, row) => (
+                  <Switch checked={row.enabled} onChange={(checked) => toggleEnabled(row.id, checked)} />
+                ),
+              },
+              {
+                title: '操作',
+                width: 200,
+                fixed: 'right',
+                render: (_, row) => (
+                  <Space>
+                    <Button size="small" onClick={() => openMetaModal(row)}>元数据</Button>
+                    <Button size="small" onClick={() => retestConnection(row.id)}>重测</Button>
+                    <Button size="small" danger onClick={() => deleteRepo(row)}>删除</Button>
+                  </Space>
+                ),
+              },
+            ]}
+          />
+        </Card>
       </div>
+
+      <Modal
+        title="新增仓库配置"
+        open={createModalOpen}
+        onCancel={() => setCreateModalOpen(false)}
+        footer={null}
+        destroyOnClose
+      >
+        <Form form={createForm} layout="vertical" onFinish={onCreate}>
+          <Form.Item name="url" label="仓库地址" rules={[{ required: true, message: '请输入 Git 地址' }]}>
+            <Input placeholder="git@corp.example.com/repo.git" />
+          </Form.Item>
+          <Form.Item name="authType" label="认证方式" initialValue="https">
+            <Select options={[{ value: 'https', label: 'HTTPS Token' }, { value: 'ssh', label: 'SSH 密钥' }]} />
+          </Form.Item>
+          <Form.Item name="defaultBranch" label="默认分支" initialValue="main">
+            <Input placeholder="main" />
+          </Form.Item>
+          <Form.Item name="authToken" label="认证凭据">
+            <Input.Password placeholder="Token（可选）" />
+          </Form.Item>
+          <Form.Item>
+            <Space>
+              <Button onClick={() => setCreateModalOpen(false)}>取消</Button>
+              <Button type="primary" htmlType="submit">保存配置</Button>
+            </Space>
+          </Form.Item>
+        </Form>
+      </Modal>
 
       <Modal title="编辑元数据" open={!!metaModal} onOk={saveMetadata} onCancel={() => setMetaModal(null)}>
         <Form form={metaForm} layout="vertical">

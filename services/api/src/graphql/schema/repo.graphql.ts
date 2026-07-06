@@ -52,5 +52,6 @@ export const repoTypeDefs = /* GraphQL */ `
     testRepoConnection(repoId: ID!): TestConnectionResult!
     updateRepoMetadata(repoId: ID!, input: UpdateRepoMetadataInput!): Repo!
     updateRepo(repoId: ID!, input: UpdateRepoInput!): Repo!
+    deleteRepo(repoId: ID!): Boolean!
   }
 `;

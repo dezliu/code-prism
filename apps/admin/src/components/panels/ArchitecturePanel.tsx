@@ -32,7 +32,11 @@ export function ArchitecturePanel() {
     if (!repoId) return;
     try {
       const data = await gql<{ generateArchDraft: { graphData: GraphData } }>(`
-        mutation($repoId: ID!) { generateArchDraft(repoId: $repoId) { graphData } }
+        mutation($repoId: ID!) {
+          generateArchDraft(repoId: $repoId) {
+            graphData { nodes { id label type } edges { id source target label } }
+          }
+        }
       `, { repoId });
       setGraph(data.generateArchDraft.graphData);
       message.success('草稿已生成');

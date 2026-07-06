@@ -1,7 +1,7 @@
 import { GraphQLScalarType } from 'graphql';
 import type { LoginUseCase } from '../../application/auth/login.js';
 import type { GetCurrentUserUseCase } from '../../application/auth/get-current-user.js';
-import type { ListReposUseCase, CreateRepoUseCase, TestRepoConnectionUseCase, UpdateRepoMetadataUseCase, UpdateRepoUseCase } from '../../application/repo/repo.use-cases.js';
+import type { ListReposUseCase, CreateRepoUseCase, TestRepoConnectionUseCase, UpdateRepoMetadataUseCase, UpdateRepoUseCase, DeleteRepoUseCase } from '../../application/repo/repo.use-cases.js';
 import type { ListKnowledgeDocsUseCase, CreateKnowledgeDocUseCase, PublishKnowledgeDocUseCase, GenerateTrainingDocUseCase } from '../../application/knowledge/knowledge.use-cases.js';
 import type {
   ListChatSessionsUseCase,
@@ -51,6 +51,7 @@ export interface GraphQLContext {
   testRepoConnectionUseCase: TestRepoConnectionUseCase;
   updateRepoMetadataUseCase: UpdateRepoMetadataUseCase;
   updateRepoUseCase: UpdateRepoUseCase;
+  deleteRepoUseCase: DeleteRepoUseCase;
   listKnowledgeDocsUseCase: ListKnowledgeDocsUseCase;
   createKnowledgeDocUseCase: CreateKnowledgeDocUseCase;
   publishKnowledgeDocUseCase: PublishKnowledgeDocUseCase;
@@ -244,6 +245,11 @@ export function createResolvers() {
         withHandler(() => {
           requireAdmin(ctx);
           return ctx.updateRepoUseCase.execute(args.repoId, args.input);
+        }),
+      deleteRepo: (_: unknown, args: { repoId: string }, ctx: GraphQLContext) =>
+        withHandler(() => {
+          requireAdmin(ctx);
+          return ctx.deleteRepoUseCase.execute(args.repoId);
         }),
       createKnowledgeDoc: (
         _: unknown,

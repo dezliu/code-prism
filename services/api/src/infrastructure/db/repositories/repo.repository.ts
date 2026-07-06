@@ -124,6 +124,10 @@ export class RepoRepository {
     });
   }
 
+  async delete(repoId: string): Promise<void> {
+    await RepoModel.query().deleteById(repoId);
+  }
+
   async updateRepo(repoId: string, input: UpdateRepoInput): Promise<RepoModel> {
     const patch: Partial<RepoModel> = { updatedAt: new Date() };
     if (input.defaultBranch !== undefined) patch.defaultBranch = input.defaultBranch;

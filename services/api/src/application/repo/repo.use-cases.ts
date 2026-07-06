@@ -155,3 +155,16 @@ export class UpdateRepoUseCase {
     return toSummary(updated);
   }
 }
+
+export class DeleteRepoUseCase {
+  constructor(private readonly repos: RepoRepository) {}
+
+  async execute(repoId: string): Promise<boolean> {
+    const repo = await this.repos.findById(repoId);
+    if (!repo) {
+      throw new NotFoundError('Repo', repoId);
+    }
+    await this.repos.delete(repoId);
+    return true;
+  }
+}
