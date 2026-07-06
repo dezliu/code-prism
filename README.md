@@ -21,21 +21,128 @@
 - **Rust**（indexer，可选）
 - **Docker** & Docker Compose
 
-## 一键启动（Docker 全栈，推荐）
+## 开发模式选择
 
-无需本地安装 Node / Go / Python，一条命令启动全部服务，统一从 **http://localhost:8080** 访问。
+改代码快速迭代 → **本地全栈**；跑 Demo / 给他人看 → **Docker 全栈**。两套配置**不可混用**。
+
+| | 本地全栈（推荐改代码） | Docker 全栈（推荐演示） |
+|---|---|---|
+| 用户端 | http://localhost:3000 | http://localhost:8080 或 http://user.localhost:8080 |
+| 管理端 | http://localhost:3001 | http://admin.localhost:8080 |
+| 监控端 | http://localhost:3002 | http://monitor.localhost:8080 |
+| GraphQL | http://localhost:4000/graphql | http://localhost:8080/graphql（同源，无 CORS） |
+| 配置文件 | 根目录 [`.env`](.env.example) | [`infra/docker/.env`](infra/docker/.env.example) |
+| 改代码后 | 多数服务自动热重载 | 需 `--build` 重建对应容器 |
+| 终端数 | 3 个后端 + 按需开前端 | 1 条命令 |
+
+> **`.env` 警告：** 根 `.env` 面向本地 dev（4000 / 3000–3002）；`infra/docker/.env` 面向 Docker（8080）。**不要把根 `.env` 的 GraphQL / CORS 配置复制进 `infra/docker/.env`**，否则浏览器从 8080 访问时会跨域失败。
+
+---
+
+## 快速开始（本地开发，推荐改代码）
 
 ### 首次准备（一次性）
 
 ```bash
-# 1. 克隆后安装前端 monorepo 依赖（仅开发改代码时需要；纯 Docker 跑 Demo 可跳过）
 pnpm install
+cp .env.example .env                              # 本地 dev 专用
+cd infra/docker && cp .env.example .env && cd ../..  # 数据层端口/凭证
+cd infra/docker && docker compose up -d           # 仅数据层，不加 --profile app
+cd infra/migrations && npm install && npm run migrate && npm run seed
+```
 
-# 2. 复制环境变量
+> **端口说明：** 数据层端口以 `infra/docker/.env.example` 为准（示例：`MYSQL_HOST_PORT=13306`）。`services/api` 启动时会读取根 `.env` 与 `infra/docker/.env` 推导连接地址。
+
+| 服务 | 默认宿主机端口 |
+|------|----------------|
+| MySQL | 13306 |
+| Redis | 6380 |
+| Neo4j | 7474 / 7687 |
+| Qdrant | 6335 |
+| OpenSearch | 9201 |
+
+开发账户（密码均为 **`lingprism123`**）：
+
+| 邮箱 | 角色 |
+|------|------|
+| `employee@lingprism.local` | employee（用户端问答） |
+| `admin@lingprism.local` | admin（管理端） |
+
+### 日常启动
+
+**后端（三端共用，固定 3 终端）：**
+
+| 终端 | 命令 | 端口 |
+|------|------|------|
+| T1 | `cd infra/docker && docker compose up -d` | 13306 等（数据层，长期运行） |
+| T2 | `cd services/api && pnpm dev` | 4000（`tsx watch` 自动重载） |
+| T3 | `cd services/ai-worker && source .venv/bin/activate && lingprism-ai-http` | 8001 |
+
+AI Worker 首次需安装：`python3 -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]"`
+
+按需额外：
+
+```bash
+cd services/core && go run ./cmd/server          # core（Batch 5 业务需）
+cd services/ai-worker && celery -A celery_app worker --loglevel=info
+cd services/mcp && pip install -e ".[dev]" && lingprism-mcp
+```
+
+**前端（改哪个 app 就启哪个，可开多个终端）：**
+
+| 端 | 命令 | 地址 | 典型页面 |
+|----|------|------|----------|
+| 用户端 | `pnpm dev:user` | http://localhost:3000 | `/login` 问答首页 |
+| 管理端 | `pnpm dev:admin` | http://localhost:3001 | `/repos` 仓库管理 |
+| 监控端 | `pnpm dev:monitor` | http://localhost:3002 | `/health` `/index-status` |
+
+验证：
+
+```bash
+curl http://localhost:4000/health
+# 浏览器：http://localhost:3000/login  /  :3001/login  /  :3002/login
+```
+
+### 改代码后要不要重启
+
+| 改了什么 | 要不要重启 | 怎么做 |
+|----------|-----------|--------|
+| `apps/user` 前端 | 否 | Next.js HMR；`pnpm dev:user` |
+| `apps/admin` 前端 | 否 | Next.js HMR；`pnpm dev:admin` |
+| `apps/monitor` 前端 | 否 | Next.js HMR；`pnpm dev:monitor` |
+| `services/api` TS | 否 | `tsx watch` 自动重启（T2 终端） |
+| 根 `.env` | 是 | T2 `Ctrl+C` → 重新 `pnpm dev` |
+| 数据库 Schema | 是 | `cd infra/migrations && npm run migrate`，再重启 api |
+| `services/ai-worker` Python | 是 | T3 `Ctrl+C` → 重新 `lingprism-ai-http` |
+| `services/core` Go | 是 | 重启 `go run` 进程 |
+| Docker 数据层配置 | 是 | `cd infra/docker && docker compose up -d`，再重启 api |
+
+### 与 Docker 全栈并存时
+
+- 建议**二选一**，避免混淆端口与 `.env`
+- 若 Docker 全栈已在跑（占 8080），本地 dev 仍可用：前端走 **3000/3001/3002**，api 走 **4000**
+- 本地 core 在 Docker Nginx 占用 8080 时会自动回退到 **18080**
+
+### 端到端验证
+
+1. 用户端：http://localhost:3000/login → `employee@lingprism.local` / `lingprism123` → 发送问题观察 SSE
+2. 管理端：http://localhost:3001/login → `admin@lingprism.local` / `lingprism123`
+3. 监控端：http://localhost:3002/login → 查看健康与索引状态
+4. LLM 需在根 `.env` 配置 `ZHIPU_API_KEY`；未配置时返回 `LLM_NOT_CONFIGURED`
+
+---
+
+## Docker 全栈（演示 / 验收）
+
+无需本地安装 Node / Go / Python，统一从 **http://localhost:8080** 访问。
+
+### 首次准备（一次性）
+
+```bash
+pnpm install   # 可选，纯 Docker 跑 Demo 可跳过
 cp .env.example .env
 cd infra/docker && cp .env.example .env && cd ../..
-
-# 3. （可选）编辑 infra/docker/.env，填入 ZHIPU_API_KEY 以启用真实 LLM 流式问答
+# 编辑 infra/docker/.env：填入 ZHIPU_API_KEY（可选）
 ```
 
 ### 启动
@@ -45,210 +152,82 @@ cd infra/docker
 docker compose --profile app up -d --build
 ```
 
-首次启动会自动执行 **MySQL 迁移 + 种子数据**（`migrate` 一次性任务）。等待约 1–2 分钟，确认服务健康：
+首次启动自动执行 **MySQL 迁移 + 种子数据**。等待约 1–2 分钟：
 
 ```bash
-docker compose --profile app ps          # 各服务应为 Up / healthy
-curl http://localhost:8080/api/health    # 应返回 {"status":"ok","service":"api",...}
+docker compose --profile app ps
+curl http://localhost:8080/api/health
 ```
 
 ### 访问页面
 
 | 地址 | 用途 |
 |------|------|
-| **http://localhost:8080/login** | 用户平台登录（主入口，推荐） |
-| http://localhost:8080 | 用户平台首页（登录后） |
-| http://admin.localhost:8080 | 管理后台 |
-| http://monitor.localhost:8080 | 监控平台 |
-| http://localhost:8080/graphql | GraphQL API（开发调试） |
+| http://localhost:8080/login | 用户平台（主入口） |
+| http://admin.localhost:8080/login | 管理后台 |
+| http://monitor.localhost:8080/login | 监控平台 |
+| http://localhost:8080/graphql | GraphQL API |
 
-开发账户（密码均为 **`lingprism123`**）：
+开发账户（密码 **`lingprism123`**）：`employee@lingprism.local`（用户）· `admin@lingprism.local`（管理）
 
-| 邮箱 | 角色 |
-|------|------|
-| `employee@lingprism.local` | employee（普通用户，测问答） |
-| `admin@lingprism.local` | admin（管理员） |
-
-**推荐体验路径：**
-
-1. 打开 http://localhost:8080/login
-2. 登录 `employee@lingprism.local` / `lingprism123`
-3. 在对话区发送问题 → 观察 SSE 流式回答
-4. （可选）访问 http://admin.localhost:8080 、http://monitor.localhost:8080
-
-> **LLM 说明：** 未配置 `ZHIPU_API_KEY` 时，问答会返回 `LLM_NOT_CONFIGURED` 错误提示。在 `infra/docker/.env` 填入密钥后执行 `docker compose --profile app up -d ai-worker` 重启即可。
+> **LLM：** 未配置 `ZHIPU_API_KEY` 时问答返回 `LLM_NOT_CONFIGURED`。填入密钥后：`docker compose --profile app up -d ai-worker`
 
 ### 停止
 
 ```bash
 cd infra/docker
-docker compose --profile app down        # 停止全部容器，保留数据
-# docker compose --profile app down -v   # 停止并删除数据卷（清空数据库）
+docker compose --profile app down        # 保留数据
+# docker compose --profile app down -v  # 清空数据库
 ```
 
-若曾本地手动启动过 `go run`、`lingprism-ai-http`、`pnpm dev` 等，也需在各终端 `Ctrl+C` 结束，避免占用端口。
+若曾本地手动启动过 `pnpm dev`、`services/api` 等，也需 `Ctrl+C` 结束，避免占端口。
 
-### 重启（不重新构建镜像）
+### 重启与重建
 
-```bash
-cd infra/docker
-docker compose --profile app up -d
-```
-
----
-
-## 快速开始（本地开发）
-
-### 1. 安装依赖
-
-```bash
-pnpm install
-```
-
-### 2. 配置环境变量
-
-```bash
-cp .env.example .env
-cd infra/docker && cp .env.example .env && cd ../..
-```
-
-> **端口说明：** 数据层端口以 `infra/docker/.env.example` 为准（示例：`MYSQL_HOST_PORT=13306`、`REDIS_HOST_PORT=6380`）。`services/api` 与 `services/core` 启动时会自动读取根目录 `.env` 与 `infra/docker/.env`，并据此推导 MySQL / Redis / Qdrant 等连接地址。也可在根 `.env` 显式设置 `DATABASE_URL`、`MYSQL_DSN`、`REDIS_URL` 等覆盖。
-
-### 3. 启动数据层
-
-```bash
-cd infra/docker
-docker compose up -d
-docker compose ps   # 确认 MySQL / Redis 等 healthy
-```
-
-| 服务 | 默认宿主机端口（`.env.example`） |
-|------|----------------------------------|
-| MySQL | 13306 |
-| Redis | 6380 |
-| Neo4j | 7474 / 7687 |
-| Qdrant | 6335 |
-| OpenSearch | 9201 |
-
-### 4. 数据库迁移与种子数据
-
-```bash
-cd infra/migrations
-npm install
-npm run migrate
-npm run seed
-```
-
-开发账户（密码均为 **`lingprism123`**）：
-
-| 邮箱 | 角色 |
+| 场景 | 命令 |
 |------|------|
-| `admin@lingprism.local` | admin |
-| `employee@lingprism.local` | employee |
+| 仅重启容器（未改代码/镜像） | `docker compose --profile app up -d` |
+| 改了 `services/api` | `docker compose --profile app up -d --build api` |
+| 改了 `apps/user` | `docker compose --profile app up -d --build user` |
+| 改了 `apps/admin` | `docker compose --profile app up -d --build admin` |
+| 改了 `apps/monitor` | `docker compose --profile app up -d --build monitor` |
+| 改了多个前端 / 不确定 | `docker compose --profile app up -d --build user admin monitor` |
+| 改了 `infra/docker/.env` 运行时变量（JWT、CORS、LLM key） | `docker compose --profile app up -d api ai-worker` |
+| 改了 Nginx 配置 | `docker compose --profile app up -d nginx` |
+| 改了数据库迁移 | `docker compose --profile app up migrate` |
+| 全量重建 | `docker compose --profile app up -d --build` |
 
-### 5. 启动后端服务
-
-**API 网关（GraphQL + SSE，:4000）**
-
-```bash
-cd services/api
-pnpm dev
-```
-
-**AI Worker HTTP（LLM 流式，:8001）**
-
-```bash
-cd services/ai-worker
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-lingprism-ai-http
-# 或：AI_WORKER_HTTP_PORT=8001 python -m internal_http.server
-```
-
-**其他服务（Batch 1 骨架，按需启动）**
-
-```bash
-# Go core（本地 HTTP 默认 :18080，见下方「端口一览」）
-cd services/core && go run ./cmd/server
-
-# MCP
-cd services/mcp && pip install -e ".[dev]" && lingprism-mcp
-
-# Celery worker
-cd services/ai-worker && celery -A celery_app worker --loglevel=info
-```
-
-> **并行 Docker 全栈时：** Nginx 已占用宿主机 `8080`，本地 `core` 会自动回退到 `18080`；MySQL 请连 Docker 映射端口 `13306`（勿用 `3306`）。健康检查：`curl http://localhost:18080/health`。
-
-### 6. 启动前端
-
-```bash
-# 用户平台   http://localhost:3000
-pnpm dev:user
-
-# 管理后台   http://localhost:3001
-pnpm dev:admin
-
-# 监控平台   http://localhost:3002
-pnpm dev:monitor
-```
-
-### 7. 端到端验证（Batch 3 Demo）
-
-1. 打开 http://localhost:3000/login
-2. 使用 `employee@lingprism.local` / `lingprism123` 登录
-3. 在对话区发送问题 → 观察 SSE 流式回答（本地需启动 `services/api` + `services/ai-worker`；LLM 需在 `services/ai-worker/.env` 或根 `.env` 配置 `ZHIPU_API_KEY`）
-4. 点击「停止」可中断生成
-
-## 一键全栈部署（Docker Compose）
-
-> **与上文「一键启动」相同。** 本节保留构建细节与进阶说明。
-
-Batch 4 提供 **Nginx 统一入口 + 各服务 Dockerfile**，无需本地安装 Node/Go/Python 即可运行 Demo。
-
-### 前置条件
-
-- Docker Desktop / OrbStack 已安装并运行
-- 可选：在 `infra/docker/.env` 中设置 `ZHIPU_API_KEY`（流式问答需真实 LLM）
-
-### 启动命令
-
-与「一键启动」相同：
-
-```bash
-cd infra/docker
-cp .env.example .env   # 首次
-docker compose --profile app up -d --build
-docker compose --profile app ps
-```
-
-### 访问入口（Nginx :8080）
-
-完整页面列表见上文 **「一键启动 → 访问页面」**。常用地址：
-
-| 地址 | 说明 |
-|------|------|
-| http://localhost:8080 | 用户平台（默认路由） |
-| http://localhost:8080/graphql | GraphQL API |
-| http://localhost:8080/api/chat/stream | SSE 流式问答 |
-| http://localhost:8080/mcp | MCP 2025 端点 |
-| http://user.localhost:8080 | 用户平台（子域） |
-| http://admin.localhost:8080 | 管理后台 |
-| http://monitor.localhost:8080 | 监控平台 |
-| http://api.localhost:8080/graphql | API 专用子域 |
-
-健康检查：
+验证：
 
 ```bash
 curl http://localhost:8080/api/health
+curl -X POST http://localhost:8080/graphql \
+  -H "Content-Type: application/json" \
+  -d '{"query":"{ __typename }"}'
 ```
 
-### 全栈端到端验证
+### `infra/docker/.env` 关键项（Docker 专用）
 
-1. 打开 http://localhost:8080/login
-2. 登录 `employee@lingprism.local` / `lingprism123`
-3. 发送问题 → 观察 SSE 流式回答（需在 `infra/docker/.env` 配置 `ZHIPU_API_KEY`；未配置时返回 `LLM_NOT_CONFIGURED` 错误事件，而非真实回答）
-4. MCP 探活（需 Header `MCP-Protocol-Version: 2025-03-26` 与 API Key）：
+```
+NEXT_PUBLIC_GRAPHQL_URL=http://localhost:8080/graphql
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8080
+CORS_ORIGINS=http://localhost:8080,http://127.0.0.1:8080,http://user.localhost:8080,http://admin.localhost:8080,http://monitor.localhost:8080
+```
+
+**不要**设为 `localhost:4000` 或 `3000/3001/3002`——浏览器从 8080 访问时会跨域失败。前端 `NEXT_PUBLIC_*` 在**构建时**注入，修改后必须 `--build` 对应前端容器。
+
+---
+
+## Docker 进阶
+
+### 仅启动数据层（本地 dev 共用）
+
+```bash
+cd infra/docker
+docker compose up -d    # 不加 --profile app
+```
+
+### MCP 探活
 
 ```bash
 curl -s http://localhost:8080/mcp \
@@ -256,25 +235,6 @@ curl -s http://localhost:8080/mcp \
   -H "MCP-Protocol-Version: 2025-03-26" \
   -H "Authorization: Bearer dev-key-1" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
-```
-
-### 仅启动数据层
-
-与 Batch 0 行为一致，不构建应用镜像：
-
-```bash
-cd infra/docker
-docker compose up -d
-```
-
-### 停止与清理
-
-与「一键启动 → 停止」相同：
-
-```bash
-cd infra/docker
-docker compose --profile app down        # 停止容器，保留数据卷
-docker compose --profile app down -v     # 停止并删除数据卷
 ```
 
 ### Dockerfile 清单
@@ -294,30 +254,22 @@ Nginx 配置位于 `infra/nginx/`。
 ### 基础设施测试
 
 ```bash
-cd infra/docker/tests
-npm install
-npm test
+cd infra/docker/tests && npm install && npm test
 ```
-
-覆盖 Nginx 路由断言、`docker-compose.yml` 结构校验、`nginx -t` 语法检查。
 
 ### Go 模块代理（core 镜像构建）
 
-Docker 构建 `core` 时默认使用 `GOPROXY=https://goproxy.cn,direct`（见 `infra/docker/.env.example`）。若出现 `proxy.golang.org ... i/o timeout`：
+国内网络在 `infra/docker/.env` 设置 `GOPROXY=https://goproxy.cn,direct`，然后：
 
 ```bash
-# infra/docker/.env
-GOPROXY=https://goproxy.cn,direct
+cd infra/docker && docker compose --profile app build core
 ```
 
-海外网络可改为 `GOPROXY=https://proxy.golang.org,direct`，然后重新构建：
-
-```bash
-cd infra/docker
-docker compose --profile app build core
-```
+---
 
 ## 端口一览
+
+> 先确认当前模式，见上文 **「开发模式选择」**。
 
 ### 本地开发（`pnpm dev` / `go run`，数据层用 Docker）
 
@@ -430,7 +382,22 @@ cd infra/docker && docker compose --profile app up -d ai-worker
 
 ### CORS 跨域错误
 
-确认 `services/api` 已启动且 `CORS_ORIGINS` 包含前端源（默认 3000/3001/3002）。
+按当前模式排查：
+
+**本地 dev（前端 3000/3001/3002 → api 4000）：**
+
+1. 确认 api 已启动：`curl http://localhost:4000/health`
+2. 确认根 `.env` 中 `CORS_ORIGINS` 包含 `http://localhost:3000,3001,3002`（及 `127.0.0.1` 别名）
+3. 改 `.env` 后重启 `services/api`
+
+**Docker 全栈（浏览器 8080）：**
+
+1. 确认 `infra/docker/.env` 中 `NEXT_PUBLIC_GRAPHQL_URL=http://localhost:8080/graphql`（**不是** 4000）
+2. 确认 `CORS_ORIGINS` 包含 `http://localhost:8080`（及子域）
+3. 改 `.env` 后：`docker compose --profile app up -d api`；改 `NEXT_PUBLIC_*` 后需 `--build user admin monitor`
+4. 浏览器应访问 **8080**，GraphQL 走 **8080/graphql**（同源，无跨域）
+
+`Status code: (null)` 通常表示 api 未启动或地址/port 错误，而非缺少 CORS 头。
 
 ### GraphQL `login` 报 `ECONNREFUSED`
 
