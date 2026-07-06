@@ -1,4 +1,5 @@
 import type { ApiConfig } from '../../config.js';
+import { ApplicationError } from '../../domain/errors.js';
 
 export interface GenerateDocInput {
   title: string;
@@ -20,16 +21,29 @@ export class AiWorkerHttpDocClient implements AiWorkerDocClient {
 
   async generateDoc(input: GenerateDocInput): Promise<GenerateDocResult> {
     const url = `${this.config.aiWorkerUrl.replace(/\/$/, '')}/internal/doc/generate`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: input.title,
-        docType: input.docType,
-        repoNames: input.repoNames,
-        context: input.context,
-      }),
-    });
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: input.title,
+          docType: input.docType,
+          repoNames: input.repoNames,
+          context: input.context,
+        }),
+      });
+    } catch (err) {
+      const cause = err instanceof Error && 'cause' in err ? (err.cause as NodeJS.ErrnoException | undefined) : undefined;
+      if (cause?.code === 'ECONNREFUSED') {
+        throw new ApplicationError(
+          `AI Worker 服务未启动（无法连接 ${this.config.aiWorkerUrl}）。请运行: cd services/ai-worker && source .venv/bin/activate && lingprism-ai-http`,
+          'SERVICE_UNAVAILABLE',
+          err,
+        );
+      }
+      throw err;
+    }
 
     if (!response.ok) {
       const body = await response.text();
