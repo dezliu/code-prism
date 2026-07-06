@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { API_BASE_URL } from './constants';
 import { getAuthToken } from '@lingprism/shared';
+import { CHAT_PHASE_LABELS } from './chat-phase-labels';
 
 export type ChatSSEPhase =
   | 'security'
@@ -141,6 +142,7 @@ export function useChatSSE(): UseChatSSEReturn {
 
       reset();
       setStreaming(true);
+      setStatus({ phase: 'understanding', stepLabel: '正在准备…' });
 
       const controller = new AbortController();
       abortRef.current = controller;
@@ -203,7 +205,7 @@ export function useChatSSE(): UseChatSSEReturn {
               setStatus((prev) => ({
                 phase,
                 streamId: streamId ?? streamIdRef.current ?? undefined,
-                stepLabel: prev?.stepLabel,
+                stepLabel: CHAT_PHASE_LABELS[phase] ?? prev?.stepLabel,
               }));
             } else if (event === 'step') {
               const label = String(data.label ?? '');

@@ -176,27 +176,71 @@ func (s *SearchService) mysqlDocSearch(ctx context.Context, q string) ([]SearchH
 	if s.db == nil {
 		return nil, nil
 	}
-	rows, err := s.db.DB().QueryContext(ctx, `
+
+	keywords := extractSearchKeywords(q)
+	if len(keywords) == 0 {
+		keywords = []string{strings.TrimSpace(q)}
+	}
+
+	conditions := make([]string, 0, len(keywords))
+	args := make([]interface{}, 0, len(keywords)*2)
+	for _, kw := range keywords {
+		if kw == "" {
+			continue
+		}
+		conditions = append(conditions, "(i.title LIKE ? OR i.content LIKE ?)")
+		pattern := "%" + kw + "%"
+		args = append(args, pattern, pattern)
+	}
+	if len(conditions) == 0 {
+		return nil, nil
+	}
+
+	sql := fmt.Sprintf(`
 		SELECT i.id, i.title, i.content
 		FROM knowledge_doc_items i
 		WHERE i.status = 'published' AND i.indexed_in_search = true
-		  AND (i.title LIKE ? OR i.content LIKE ?)
-		LIMIT 5
-	`, "%"+q+"%", "%"+q+"%")
+		  AND (%s)
+		LIMIT 8
+	`, strings.Join(conditions, " OR "))
+
+	rows, err := s.db.DB().QueryContext(ctx, sql, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	hits := []SearchHit{}
+
+	type docRow struct {
+		id, title, content string
+	}
+	rowsData := []docRow{}
 	for rows.Next() {
 		var id, title, content string
 		if err := rows.Scan(&id, &title, &content); err == nil {
-			snippet := content
-			if len(snippet) > 120 {
-				snippet = snippet[:120] + "…"
-			}
-			hits = append(hits, SearchHit{Type: "doc", Title: title, Snippet: snippet, Ref: id, Score: 0.4})
+			rowsData = append(rowsData, docRow{id, title, content})
 		}
+	}
+
+	hits := make([]SearchHit, 0, len(rowsData))
+	for _, row := range rowsData {
+		matchCount := 0
+		combined := row.title + " " + row.content
+		for _, kw := range keywords {
+			if strings.Contains(combined, kw) {
+				matchCount++
+			}
+		}
+		score := 0.3 + float64(matchCount)*0.1
+		if score > 0.9 {
+			score = 0.9
+		}
+		snippet := row.content
+		if len(snippet) > 120 {
+			snippet = snippet[:120] + "…"
+		}
+		hits = append(hits, SearchHit{
+			Type: "doc", Title: row.title, Snippet: snippet, Ref: row.id, Score: score,
+		})
 	}
 	return hits, nil
 }

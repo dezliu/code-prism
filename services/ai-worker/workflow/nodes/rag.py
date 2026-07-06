@@ -8,6 +8,7 @@ from typing import Any
 from chains.rag_retrieval import (
     build_search_variants,
     expand_query_with_llm,
+    extract_keywords,
     is_meaningful_hit,
     merge_hits,
 )
@@ -46,11 +47,19 @@ def _format_context_lines(hits: list[dict[str, Any]]) -> list[str]:
     return lines
 
 
+def _top_scores(values: list[float], limit: int = 3) -> list[float]:
+    if not values:
+        return []
+    ordered = sorted(values, reverse=True)
+    return ordered[:limit]
+
+
 def _compute_rag_score(hits: list[dict[str, Any]], graph_hits: list[dict[str, Any]], intent: IntentKind) -> float:
     if not hits and not graph_hits:
         return 0.0
 
     weights = INTENT_WEIGHTS.get(intent, INTENT_WEIGHTS["general"])
+    doc_boost = 1.2 if intent == "doc" else 1.0
     buckets: dict[str, list[float]] = {"code": [], "doc": [], "graph": [], "repo": []}
 
     for hit in hits:
@@ -61,7 +70,7 @@ def _compute_rag_score(hits: list[dict[str, Any]], graph_hits: list[dict[str, An
         elif hit_type == "repo":
             buckets["repo"].append(score)
         else:
-            buckets["doc"].append(score)
+            buckets["doc"].append(min(1.0, score * doc_boost))
 
     for hit in graph_hits:
         buckets["graph"].append(float(hit.get("score") or 0.6))
@@ -71,7 +80,7 @@ def _compute_rag_score(hits: list[dict[str, Any]], graph_hits: list[dict[str, An
     for bucket, weight in weights.items():
         if weight <= 0:
             continue
-        values = buckets.get(bucket, [])
+        values = _top_scores(buckets.get(bucket, []))
         avg = sum(values) / len(values) if values else 0.0
         total += avg * weight
         if values:
@@ -80,6 +89,35 @@ def _compute_rag_score(hits: list[dict[str, Any]], graph_hits: list[dict[str, An
     if weight_sum == 0:
         return 0.0
     return min(1.0, total / weight_sum)
+
+
+def _keyword_overlap_count(query: str, hit: dict[str, Any]) -> int:
+    keywords = extract_keywords(query)
+    if not keywords:
+        return 0
+    text = f"{hit.get('title', '')} {hit.get('snippet', '')}".lower()
+    return sum(1 for kw in keywords if kw.lower() in text)
+
+
+def _passes_rag_quality_gate(state: QaWorkflowState) -> bool:
+    if state.rag_score >= state.min_rag_score:
+        return True
+
+    if len(state.rag_hits) >= max(1, state.min_rag_hits):
+        top_score = float(state.rag_hits[0].get("score") or 0)
+        if len(state.rag_hits) >= 2 and top_score >= 0.15:
+            return True
+        if top_score >= 0.25:
+            return True
+
+    query = state.resolved_message or state.message
+    for hit in state.rag_hits:
+        if str(hit.get("type", "doc")) != "doc":
+            continue
+        if _keyword_overlap_count(query, hit) >= 2:
+            return True
+
+    return False
 
 
 async def _search_once(
@@ -149,14 +187,13 @@ async def rag_retrieve_node(state: QaWorkflowState, deps: WorkflowDeps) -> Route
             hits = await _search_once(deps, state, q, "original" if q == query else "rewrite", intent=intent)
             if hits:
                 collected.append(hits)
-                break
 
-        if not collected:
-            for variant in build_search_variants(query)[1:4]:
-                hits = await _search_once(deps, state, variant, "keyword", intent=intent)
-                if hits:
-                    collected.append(hits)
-                    break
+        for variant in build_search_variants(query)[1:4]:
+            if any(entry["query"] == variant for entry in state.retrieval_log):
+                continue
+            hits = await _search_once(deps, state, variant, "keyword", intent=intent)
+            if hits:
+                collected.append(hits)
 
         state.rag_hits = merge_hits(collected, limit=8)
 
@@ -175,10 +212,11 @@ async def rag_retrieve_node(state: QaWorkflowState, deps: WorkflowDeps) -> Route
         if intent == "code":
             keywords = build_search_variants(query)[1:3]
             for kw in keywords:
+                if any(entry["query"] == kw for entry in state.retrieval_log):
+                    continue
                 hits = await _search_once(deps, state, kw, "code_symbol", intent="code", search_mode="code")
                 if hits:
                     state.rag_hits = merge_hits([state.rag_hits, hits], limit=8)
-                    break
 
         for hit in state.rag_hits[:5]:
             deps.emit(
@@ -210,7 +248,7 @@ async def rag_retrieve_node(state: QaWorkflowState, deps: WorkflowDeps) -> Route
 async def rag_quality_gate_node(state: QaWorkflowState, deps: WorkflowDeps) -> RouteKind:
     deps.emit("step", {"node": "rag_quality_gate", "label": "评估检索质量"})
 
-    if state.rag_score >= state.min_rag_score:
+    if _passes_rag_quality_gate(state):
         state.current_node = "rag_quality_gate"
         if state.active_template:
             return "template_apply"
@@ -218,6 +256,13 @@ async def rag_quality_gate_node(state: QaWorkflowState, deps: WorkflowDeps) -> R
 
     if state.rag_loop_count < state.max_rag_loops and not state.hyde_used:
         return "hyde_expand"
+
+    if state.rag_hits or state.graph_hits:
+        state.low_confidence_retrieval = True
+        state.current_node = "rag_quality_gate"
+        if state.active_template:
+            return "template_apply"
+        return "generate_answer"
 
     if state.rag_loop_count >= state.max_rag_loops or state.hyde_used:
         state.refuse_reason = (

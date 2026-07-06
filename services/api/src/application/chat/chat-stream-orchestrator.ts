@@ -62,11 +62,25 @@ export class ChatStreamOrchestrator {
       data: { sessionId, title: sessionTitle },
     });
 
+    writeSseEvent(input.res, {
+      event: 'step',
+      data: { node: 'persist_user', label: '保存消息…' },
+    });
+
     await this.persistMessage.execute({
       sessionId,
       userId: input.userId,
       role: 'user',
       content: message,
+    });
+
+    writeSseEvent(input.res, {
+      event: 'status',
+      data: { phase: 'understanding' },
+    });
+    writeSseEvent(input.res, {
+      event: 'step',
+      data: { node: 'context', label: '加载会话上下文…' },
     });
 
     const sessionContext = await this.getSessionContext.execute(sessionId, input.userId);

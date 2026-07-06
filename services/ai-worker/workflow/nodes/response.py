@@ -46,7 +46,7 @@ async def direct_answer_node(state: QaWorkflowState, deps: WorkflowDeps) -> Rout
 
 async def refuse_node(state: QaWorkflowState, deps: WorkflowDeps) -> RouteKind:
     deps.emit("step", {"node": "refuse", "label": "无法回答"})
-    if state.refuse_reason and state.rag_score < state.min_rag_score:
+    if state.refuse_reason and state.rag_score < state.min_rag_score and not state.rag_hits:
         text = _build_no_context_fallback(state, llm_configured=deps.llm_configured())
         text = f"{state.refuse_reason}\n\n{text}"
     else:

@@ -575,6 +575,103 @@ body {
   white-space: pre-wrap;
 }
 
+.user-msg-bubble--md {
+  white-space: normal;
+}
+
+.user-thinking {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--user-text-secondary);
+  font-size: 14px;
+}
+
+.user-thinking-label {
+  font-weight: 500;
+}
+
+.user-thinking-meta {
+  width: 100%;
+  font-size: 13px;
+  color: var(--user-text-muted);
+}
+
+.user-stream-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--user-border-light);
+  font-size: 12px;
+  color: var(--user-text-muted);
+}
+
+.user-md-preview {
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.user-md-preview .wmde-markdown {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  color: inherit;
+  background: transparent !important;
+}
+
+.user-md-preview .wmde-markdown h1,
+.user-md-preview .wmde-markdown h2,
+.user-md-preview .wmde-markdown h3 {
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.user-md-preview .wmde-markdown h1 { font-size: 1.35em; }
+.user-md-preview .wmde-markdown h2 { font-size: 1.2em; }
+.user-md-preview .wmde-markdown h3 { font-size: 1.08em; }
+
+.user-md-preview .wmde-markdown p {
+  margin: 0.5em 0;
+}
+
+.user-md-preview .wmde-markdown ul,
+.user-md-preview .wmde-markdown ol {
+  margin: 0.5em 0;
+  padding-left: 1.4em;
+}
+
+.user-md-preview .wmde-markdown code {
+  padding: 0.15em 0.35em;
+  border-radius: 4px;
+  background: var(--user-accent-light);
+  font-size: 0.9em;
+}
+
+.user-md-preview .wmde-markdown pre {
+  margin: 0.75em 0;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #f6f8fa;
+  overflow-x: auto;
+}
+
+.user-md-preview .wmde-markdown pre code {
+  padding: 0;
+  background: transparent;
+}
+
+.user-md-preview .wmde-markdown blockquote {
+  margin: 0.75em 0;
+  padding-left: 12px;
+  border-left: 3px solid var(--user-accent);
+  color: var(--user-text-secondary);
+}
+
 .user-msg.user .user-msg-bubble {
   background: var(--user-accent);
   color: #fff;

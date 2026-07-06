@@ -4,6 +4,7 @@ export { createApolloClient, resetApolloClient } from './apollo-client';
 export { LingPrismApolloProvider } from './apollo-provider';
 export { loginWithCredentials, fetchCurrentUser, logout } from './auth-api';
 export { useChatSSE } from './use-chat-sse';
+export { CHAT_PHASE_LABELS, formatChatStatusLabel } from './chat-phase-labels';
 export { useDocGenerateSSE } from './use-doc-generate-sse';
 export { useArchGenerateSSE, ARCH_PHASE_LABELS } from './use-arch-generate-sse';
 export {

@@ -6,12 +6,14 @@ import {
   fetchCurrentUser,
   logout,
   useChatSSE,
+  formatChatStatusLabel,
   type AuthUser,
   type ChatSource,
 } from '@lingprism/graphql';
 import { getAuthToken } from '@lingprism/shared';
 import { GRAPHQL_ENDPOINT } from '@lingprism/graphql/constants';
 import { UserShell } from '../components/UserShell';
+import { ChatMarkdown } from '../components/ChatMarkdown';
 
 interface ChatSession {
   id: string;
@@ -475,8 +477,12 @@ export default function ChatPageInner() {
             {messages.map((msg) => (
               <div key={msg.id} className={`user-msg ${msg.role}`}>
                 <span className="user-msg-label">{msg.role === 'user' ? '我' : '灵镜'}</span>
-                <div className="user-msg-bubble">
-                  {msg.content}
+                <div className={`user-msg-bubble${msg.role === 'assistant' ? ' user-msg-bubble--md' : ''}`}>
+                  {msg.role === 'assistant' ? (
+                    <ChatMarkdown content={msg.content} />
+                  ) : (
+                    msg.content
+                  )}
                   {msg.role === 'assistant' && msg.sources && msg.sources.length > 0 ? (
                     <div style={{ marginTop: 4 }}>
                       {msg.sources.map((source) => (
@@ -498,8 +504,20 @@ export default function ChatPageInner() {
             {chat.streaming || chat.content ? (
               <div className="user-msg assistant">
                 <span className="user-msg-label">灵镜</span>
-                <div className="user-msg-bubble">
-                  {chat.content || '思考中…'}
+                <div className={`user-msg-bubble${chat.content ? ' user-msg-bubble--md' : ''}`}>
+                  {chat.content ? (
+                    <ChatMarkdown content={chat.content} />
+                  ) : (
+                    <div className="user-thinking">
+                      <span className="user-status-dot" />
+                      <span className="user-thinking-label">{formatChatStatusLabel(chat.status)}</span>
+                      {chat.sources.length > 0 ? (
+                        <span className="user-thinking-meta">
+                          已找到 {chat.sources.length} 条相关资料
+                        </span>
+                      ) : null}
+                    </div>
+                  )}
                   {chat.sources.length > 0 ? (
                     <div style={{ marginTop: 4 }}>
                       {chat.sources.map((source) => (
@@ -509,14 +527,13 @@ export default function ChatPageInner() {
                       ))}
                     </div>
                   ) : null}
+                  {chat.streaming && chat.content && chat.status ? (
+                    <div className="user-stream-status">
+                      <span className="user-status-dot" />
+                      {formatChatStatusLabel(chat.status)}
+                    </div>
+                  ) : null}
                 </div>
-              </div>
-            ) : null}
-
-            {chat.streaming && chat.status ? (
-              <div className="user-status-line">
-                <span className="user-status-dot" />
-                {chat.status.stepLabel ?? `阶段：${chat.status.phase}`}
               </div>
             ) : null}
 

@@ -12,9 +12,11 @@ from infrastructure.clients.core import CoreSearchClient
 from infrastructure.llm.factory import PlaceholderChatModel
 
 _IDENTIFIER_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9_-]{1,48}")
+_MIXED_ENTITY_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9_-]*[\u4e00-\u9fa5]+")
 _CHINESE_TOPIC_PATTERN = re.compile(
     r"([\u4e00-\u9fa5]{2,12})(?:的)?(?:具体)?(?:设计|架构|实现|流程|模块|功能)?"
 )
+_QUESTION_SUFFIX_PATTERN = re.compile(r"(是什么样的|怎么样|如何|什么|哪些|吗|呢|\?|？)+$")
 _PLACEHOLDER_MARKERS = ("未找到精确匹配", "core 不可达", "离线检索占位")
 
 
@@ -36,16 +38,36 @@ def is_meaningful_hit(hit: dict[str, Any]) -> bool:
 def extract_keywords(query: str) -> list[str]:
     """Pull entity identifiers and Chinese topic tokens from a natural question."""
     keywords: list[str] = []
+
+    def add(token: str) -> None:
+        token = _QUESTION_SUFFIX_PATTERN.sub("", token.strip())
+        if len(token) >= 2 and token not in keywords:
+            keywords.append(token)
+
+    for match in _MIXED_ENTITY_PATTERN.finditer(query):
+        mixed = match.group()
+        add(mixed)
+        prefix = re.match(r"[A-Za-z][A-Za-z0-9_-]*", mixed)
+        if prefix:
+            add(prefix.group())
+        split = re.match(r"([A-Za-z][A-Za-z0-9_-]*)([\u4e00-\u9fa5]+)", mixed)
+        if split:
+            eng, han = split.group(1), split.group(2)
+            add(han)
+            add(f"{eng} {han}")
+            add(f"{eng} knowledge")
+            add(f"{eng} knowledge base")
+
     for match in _IDENTIFIER_PATTERN.finditer(query):
         token = match.group()
-        keywords.append(token)
+        add(token)
         if "-" in token:
-            keywords.append(token.replace("-", "_"))
+            add(token.replace("-", "_"))
         if "_" in token:
-            keywords.append(token.replace("_", "-"))
+            add(token.replace("_", "-"))
 
     for match in _CHINESE_TOPIC_PATTERN.finditer(query):
-        keywords.append(match.group(1))
+        add(match.group(1))
 
     return list(dict.fromkeys(kw for kw in keywords if kw))
 
@@ -98,8 +120,7 @@ async def expand_query_with_llm(query: str, model: Any) -> list[str]:
         return []
 
     prompt = (
-        "你是企业知识库检索助手。用户提问后在知识库中未找到结果。\n"
-        "请将用户问题改写为 2-3 个更适合代码/文档全文与语义检索的搜索 query。\n"
+        "你是企业知识库检索助手。请将用户问题改写为 2-3 个更适合代码/文档全文与语义检索的搜索 query。\n"
         "要求：每行一个 query，不要编号，可中英文混合，保留核心实体名。\n\n"
         f"用户问题：{query}"
     )

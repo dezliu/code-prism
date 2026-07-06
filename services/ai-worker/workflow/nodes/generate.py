@@ -79,9 +79,11 @@ def _build_generate_prompt(state: QaWorkflowState) -> str:
     base = (
         "你是灵镜(LingPrism)企业知识助手。请基于检索到的企业知识上下文回答用户问题。\n"
         "要求：\n"
-        "1. 优先引用检索上下文中的事实，标注来源类型（code/doc/repo/graph）\n"
-        "2. 若上下文不足，明确说明缺失信息，不要编造\n"
-        "3. 给出可执行的下一步建议（如需要同步哪个仓库、补充哪类文档）\n\n"
+        "1. 优先整合检索上下文中的有效信息，组织成清晰、可直接阅读的回答\n"
+        "2. 使用 Markdown 格式（标题、列表、加粗）；引用事实时标注来源类型（code/doc/repo/graph）\n"
+        "3. 即使信息不完整，也要先给出已有信息的总结与合理推断，再在末尾用一两句话简要说明可能缺失的部分\n"
+        "4. 禁止用「缺失的关键信息」「建议下一步行动」作为主要结构；不要只列缺口而不回答问题\n"
+        "5. 不要编造上下文中不存在的技术细节\n\n"
         f"问题类型：{state.intent}\n"
         f"当前锚点：{anchor_name}\n"
         f"检索相关度：{state.rag_score:.2f}\n\n"
@@ -95,7 +97,10 @@ def _build_generate_prompt(state: QaWorkflowState) -> str:
         f"{error_feedback}\n"
     )
     if has_context:
-        return base + f"用户问题：{state.resolved_message or state.message}"
+        note = ""
+        if state.low_confidence_retrieval:
+            note = "注意：检索相关度偏低，以下回答基于有限上下文，请结合来源文档核实。\n\n"
+        return base + note + f"用户问题：{state.resolved_message or state.message}"
     return (
         base
         + f"用户问题：{state.resolved_message or state.message}\n"

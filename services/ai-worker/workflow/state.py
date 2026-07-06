@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -87,6 +88,7 @@ class QaWorkflowState:
     rag_loop_count: int = 0
     hyde_used: bool = False
     hyde_draft: str | None = None
+    low_confidence_retrieval: bool = False
 
     generated_answer: str = ""
     stream_buffer: str = ""
@@ -100,15 +102,17 @@ class QaWorkflowState:
     interrupted: bool = False
     message_id: str = ""
 
-    max_rag_loops: int = 2
-    max_grounding_retries: int = 2
-    min_rag_score: float = 0.35
-    min_intent_confidence: float = 0.8
+    max_rag_loops: int = field(default_factory=lambda: max(1, int(os.getenv("QA_MAX_RAG_LOOPS", "2"))))
+    max_grounding_retries: int = field(default_factory=lambda: max(0, int(os.getenv("QA_MAX_GROUNDING_RETRIES", "2"))))
+    min_rag_score: float = field(default_factory=lambda: float(os.getenv("QA_MIN_RAG_SCORE", "0.35")))
+    min_rag_hits: int = field(default_factory=lambda: max(1, int(os.getenv("QA_MIN_RAG_HITS", "1"))))
+    min_intent_confidence: float = field(default_factory=lambda: float(os.getenv("QA_MIN_INTENT_CONFIDENCE", "0.8")))
 
 
 DEFAULT_WORKFLOW_LIMITS = {
-    "max_rag_loops": 2,
-    "max_grounding_retries": 2,
-    "min_rag_score": 0.35,
-    "min_intent_confidence": 0.8,
+    "max_rag_loops": max(1, int(os.getenv("QA_MAX_RAG_LOOPS", "2"))),
+    "max_grounding_retries": max(0, int(os.getenv("QA_MAX_GROUNDING_RETRIES", "2"))),
+    "min_rag_score": float(os.getenv("QA_MIN_RAG_SCORE", "0.35")),
+    "min_rag_hits": max(1, int(os.getenv("QA_MIN_RAG_HITS", "1"))),
+    "min_intent_confidence": float(os.getenv("QA_MIN_INTENT_CONFIDENCE", "0.8")),
 }

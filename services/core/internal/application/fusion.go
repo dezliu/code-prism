@@ -36,9 +36,25 @@ func ReciprocalRankFusion(lists [][]SearchHit, k int) []SearchHit {
 		return ranked[i].Score > ranked[j].Score
 	})
 
+	// Normalize scores to [0, 1] so downstream quality gates can use a 0–1 threshold.
+	nonEmptyLists := 0
+	for _, list := range lists {
+		if len(list) > 0 {
+			nonEmptyLists++
+		}
+	}
+	maxScore := 1.0 / (float64(k) + 1.0)
+	if nonEmptyLists > 0 {
+		maxScore = float64(nonEmptyLists) / (float64(k) + 1.0)
+	}
+
 	out := make([]SearchHit, 0, len(ranked))
 	for _, item := range ranked {
-		out = append(out, item.Hit)
+		hit := item.Hit
+		if maxScore > 0 {
+			hit.Score = item.Score / maxScore
+		}
+		out = append(out, hit)
 	}
 	return out
 }
