@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>灵镜 (LingPrism) — 监控中心</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0F172A;
+      --surface: #1E293B;
+      --surface-2: #334155;
+      --border: #334155;
+      --border-glow: rgba(6,182,212,0.3);
+      --text-primary: #F1F5F9;
+      --text-secondary: #94A3B8;
+      --text-muted: #64748B;
+      --cyan: #06B6D4;
+      --purple: #8B5CF6;
+      --green: #10B981;
+      --red: #EF4444;
+      --yellow: #F59E0B;
+      --font-mono: 'JetBrains Mono', 'SF Mono', monospace;
+      --font-ui: 'Inter', sans-serif;
+      --radius: 8px;
+    }
+
+    html { font-size: 14px; }
+    body {
+      font-family: var(--font-ui);
+      background: var(--bg);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Grid background */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(6,182,212,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(6,182,212,0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Topbar */
+    .topbar {
+      height: 52px;
+      background: rgba(15,23,42,0.95);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(12px);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--text-primary);
+    }
+    .brand-icon {
+      width: 32px; height: 32px;
+      background: linear-gradient(135deg, var(--cyan), var(--purple));
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 15px; color: #fff; font-weight: 700;
+      box-shadow: 0 0 20px rgba(6,182,212,0.3);
+    }
+    .brand-text { font-weight: 600; font-size: 15px; letter-spacing: -0.02em; }
+    .brand-sub { color: var(--text-muted); font-weight: 400; font-size: 12px; margin-left: 4px; }
+
+    .topbar-center {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--cyan);
+    }
+    .live-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green);
+      animation: blink 2s infinite;
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .topbar-nav { display: flex; gap: 4px; }
+    .topbar-nav a {
+      padding: 6px 14px;
+      border-radius: var(--radius);
+      font-size: 13px;
+      font-weight: 500;
+      text-decoration: none;
+      color: var(--text-secondary);
+      border: 1px solid transparent;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+    .topbar-nav a:hover { background: var(--surface); color: var(--text-primary); border-color: var(--border); }
+    .topbar-nav a.active { background: rgba(6,182,212,0.12); color: var(--cyan); border-color: rgba(6,182,212,0.3); }
+    .topbar-nav a:active { transform: scale(0.97); }
+
+    .topbar-time {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-left: 16px;
+    }
+
+    /* Main */
+    .main {
+      margin-top: 52px;
+      padding: 20px 24px 52px;
+      position: relative;
+      z-index: 1;
+      flex: 1;
+    }
+
+    /* Alert banner */
+    .alert-banner {
+      background: rgba(239,68,68,0.1);
+      border: 1px solid rgba(239,68,68,0.4);
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .alert-banner:hover { background: rgba(239,68,68,0.15); border-color: rgba(239,68,68,0.6); }
+    .alert-banner:active { transform: scale(0.998); }
+    .alert-icon { font-size: 18px; color: var(--red); }
+    .alert-text { flex: 1; font-size: 13px; }
+    .alert-text strong { color: var(--red); font-family: var(--font-mono); }
+    .alert-action { font-size: 12px; color: var(--red); font-weight: 600; }
+
+    /* KPI Grid */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+    .kpi-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      position: relative;
+      overflow: hidden;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .kpi-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, var(--cyan), var(--purple));
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .kpi-card:hover { border-color: var(--border-glow); box-shadow: 0 0 24px rgba(6,182,212,0.08); }
+    .kpi-card:hover::before { opacity: 1; }
+    .kpi-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+    .kpi-value {
+      font-family: var(--font-mono);
+      font-size: 36px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1;
+    }
+    .kpi-value.cyan { color: var(--cyan); text-shadow: 0 0 30px rgba(6,182,212,0.4); }
+    .kpi-value.purple { color: var(--purple); text-shadow: 0 0 30px rgba(139,92,246,0.4); }
+    .kpi-value.green { color: var(--green); text-shadow: 0 0 30px rgba(16,185,129,0.4); }
+    .kpi-value.yellow { color: var(--yellow); }
+    .kpi-meta {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 8px;
+    }
+    .kpi-meta .up { color: var(--green); }
+    .kpi-meta .down { color: var(--red); }
+
+    /* Charts */
+    .charts-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr;
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+    .chart-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 18px;
+      transition: border-color 0.2s;
+    }
+    .chart-panel:hover { border-color: rgba(6,182,212,0.2); }
+    .chart-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .chart-title { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+    .chart-badge {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 99px;
+      background: rgba(6,182,212,0.12);
+      color: var(--cyan);
+    }
+    .chart-wrap { position: relative; height: 200px; }
+
+    /* Alert log */
+    .alert-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .alert-panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+    }
+    .alert-panel-title { font-size: 13px; font-weight: 600; }
+    .filter-tabs { display: flex; gap: 4px; }
+    .filter-tab {
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-muted);
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+    .filter-tab:hover { color: var(--text-secondary); background: var(--surface-2); }
+    .filter-tab.active { color: var(--cyan); background: rgba(6,182,212,0.1); border-color: rgba(6,182,212,0.3); }
+
+    .alert-log { max-height: 240px; overflow-y: auto; }
+    .alert-row {
+      display: grid;
+      grid-template-columns: 140px 100px 1fr 80px 100px;
+      gap: 12px;
+      padding: 10px 18px;
+      border-bottom: 1px solid rgba(51,65,85,0.5);
+      font-size: 12px;
+      align-items: center;
+      transition: background 0.1s;
+      cursor: pointer;
+    }
+    .alert-row:hover { background: rgba(6,182,212,0.04); }
+    .alert-row:active { background: rgba(6,182,212,0.08); }
+    .alert-row:last-child { border-bottom: none; }
+    .alert-time { font-family: var(--font-mono); color: var(--text-muted); font-size: 11px; }
+    .severity {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 3px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .severity.critical { background: rgba(239,68,68,0.15); color: var(--red); }
+    .severity.warning { background: rgba(245,158,11,0.15); color: var(--yellow); }
+    .severity.info { background: rgba(6,182,212,0.12); color: var(--cyan); }
+    .alert-msg { color: var(--text-secondary); }
+    .alert-project { font-family: var(--font-mono); color: var(--purple); font-size: 11px; }
+    .alert-status {
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .alert-status.pending { color: var(--yellow); }
+    .alert-status.resolved { color: var(--green); }
+
+    /* Footer */
+    .footer {
+      height: 36px;
+      background: rgba(15,23,42,0.95);
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      color: var(--text-muted);
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      z-index: 100;
+      font-family: var(--font-mono);
+    }
+
+    @media (max-width: 1200px) {
+      .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+      .charts-grid { grid-template-columns: 1fr; }
+      .alert-row { grid-template-columns: 1fr; gap: 4px; }
+    }
+  </style>
+</head>
+<body>
+
+  <header class="topbar">
+    <a class="brand" href="monitor.html">
+      <div class="brand-icon">镜</div>
+      <span class="brand-text">灵镜 <span class="brand-sub">LingPrism</span></span>
+    </a>
+    <div class="topbar-center">
+      <span class="live-dot"></span>
+      <span>实时监控 · 数据延迟 &lt; 5min</span>
+    </div>
+    <nav class="topbar-nav">
+      <a href="admin.html">管理后台</a>
+      <a href="user.html">用户平台</a>
+      <a href="monitor.html" class="active">监控中心</a>
+    </nav>
+    <span class="topbar-time" id="clock">--:--:--</span>
+  </header>
+
+  <main class="main">
+
+    <div class="alert-banner">
+      <span class="alert-icon">⚠</span>
+      <div class="alert-text">
+        <strong>MCP 服务异常</strong> — 过去 1 小时错误率从 1% 突增至 15%，已超过预警阈值。热门失败查询：「get_project_architecture」
+      </div>
+      <span class="alert-action">查看详情 →</span>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-label">健康度平均分</div>
+        <div class="kpi-value cyan">72.4</div>
+        <div class="kpi-meta"><span class="up">↑ 2.1</span> 较上周 · 42 个项目</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">架构合规率</div>
+        <div class="kpi-value green">87%</div>
+        <div class="kpi-meta">37 合规 · <span class="down">5 存在漂移</span></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">MCP 调用总次数</div>
+        <div class="kpi-value purple">12,847</div>
+        <div class="kpi-meta">今日 · P95 响应 320ms</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">今日索引变更</div>
+        <div class="kpi-value yellow">23</div>
+        <div class="kpi-meta">增量 19 · 全量 4 · 失败 2</div>
+      </div>
+    </div>
+
+    <div class="charts-grid">
+      <div class="chart-panel">
+        <div class="chart-header">
+          <span class="chart-title">健康度趋势（近 30 天）</span>
+          <span class="chart-badge">全局视图</span>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="healthChart"></canvas>
+        </div>
+      </div>
+      <div class="chart-panel">
+        <div class="chart-header">
+          <span class="chart-title">各项目风险分布</span>
+          <span class="chart-badge">按团队</span>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="riskChart"></canvas>
+        </div>
+      </div>
+      <div class="chart-panel">
+        <div class="chart-header">
+          <span class="chart-title">文档覆盖率</span>
+          <span class="chart-badge">已纳管模块</span>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="coverageChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="alert-panel">
+      <div class="alert-panel-header">
+        <span class="alert-panel-title">实时预警日志</span>
+        <div class="filter-tabs">
+          <span class="filter-tab active">全部</span>
+          <span class="filter-tab">健康度</span>
+          <span class="filter-tab">架构漂移</span>
+          <span class="filter-tab">索引失败</span>
+          <span class="filter-tab">MCP 异常</span>
+        </div>
+      </div>
+      <div class="alert-log">
+        <div class="alert-row">
+          <span class="alert-time">10:18:42</span>
+          <span class="severity critical">严重</span>
+          <span class="alert-msg">MCP 错误率突增至 15%，超过阈值 10%</span>
+          <span class="alert-project">mcp-gateway</span>
+          <span class="alert-status pending">待处理</span>
+        </div>
+        <div class="alert-row">
+          <span class="alert-time">09:52:17</span>
+          <span class="severity warning">警告</span>
+          <span class="alert-msg">架构漂移：order-platform 实际调用 risk-engine，架构图未声明</span>
+          <span class="alert-project">order-platform</span>
+          <span class="alert-status pending">待处理</span>
+        </div>
+        <div class="alert-row">
+          <span class="alert-time">09:41:03</span>
+          <span class="severity critical">严重</span>
+          <span class="alert-msg">健康度评分 45 低于阈值 60，循环依赖 12 处</span>
+          <span class="alert-project">legacy-billing</span>
+          <span class="alert-status pending">待处理</span>
+        </div>
+        <div class="alert-row">
+          <span class="alert-time">08:30:55</span>
+          <span class="severity warning">警告</span>
+          <span class="alert-msg">索引失败：认证过期，无法拉取仓库</span>
+          <span class="alert-project">legacy-billing</span>
+          <span class="alert-status pending">待处理</span>
+        </div>
+        <div class="alert-row">
+          <span class="alert-time">07:15:22</span>
+          <span class="severity info">信息</span>
+          <span class="alert-msg">文档覆盖率低于 50%，建议补充培训文档</span>
+          <span class="alert-project">analytics-etl</span>
+          <span class="alert-status resolved">已处理</span>
+        </div>
+        <div class="alert-row">
+          <span class="alert-time">06:48:10</span>
+          <span class="severity warning">警告</span>
+          <span class="alert-msg">架构漂移：payment-service 新增未声明依赖 notification-hub</span>
+          <span class="alert-project">payment-service</span>
+          <span class="alert-status resolved">已处理</span>
+        </div>
+        <div class="alert-row">
+          <span class="alert-time">02:12:38</span>
+          <span class="severity info">信息</span>
+          <span class="alert-msg">增量索引完成：infra-gateway，变更 47 文件</span>
+          <span class="alert-project">infra-gateway</span>
+          <span class="alert-status resolved">已完成</span>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <footer class="footer">© 2026 NL Hermes</footer>
+
+  <script>
+    // Clock
+    function updateClock() {
+      const now = new Date();
+      document.getElementById('clock').textContent =
+        now.toLocaleTimeString('zh-CN', { hour12: false });
+    }
+    updateClock();
+    setInterval(updateClock, 1000);
+
+    // Chart defaults
+    Chart.defaults.color = '#64748B';
+    Chart.defaults.borderColor = 'rgba(51,65,85,0.5)';
+    Chart.defaults.font.family = "'JetBrains Mono', monospace";
+
+    // Health trend line chart
+    new Chart(document.getElementById('healthChart'), {
+      type: 'line',
+      data: {
+        labels: ['6/7','6/10','6/13','6/16','6/19','6/22','6/25','6/28','7/1','7/4','7/6'],
+        datasets: [{
+          label: '平均健康度',
+          data: [68.2, 69.1, 70.5, 69.8, 71.2, 70.9, 72.0, 71.5, 72.8, 71.9, 72.4],
+          borderColor: '#06B6D4',
+          backgroundColor: 'rgba(6,182,212,0.08)',
+          fill: true,
+          tension: 0.4,
+          pointRadius: 3,
+          pointBackgroundColor: '#06B6D4',
+          pointBorderColor: '#0F172A',
+          pointBorderWidth: 2,
+        }, {
+          label: '风险阈值',
+          data: [60,60,60,60,60,60,60,60,60,60,60],
+          borderColor: 'rgba(239,68,68,0.5)',
+          borderDash: [6, 4],
+          pointRadius: 0,
+          fill: false,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: true, position: 'bottom', labels: { boxWidth: 12, padding: 16, font: { size: 11 } } }
+        },
+        scales: {
+          y: { min: 50, max: 85, grid: { color: 'rgba(51,65,85,0.4)' }, ticks: { font: { size: 10 } } },
+          x: { grid: { display: false }, ticks: { font: { size: 10 } } }
+        },
+        interaction: { intersect: false, mode: 'index' }
+      }
+    });
+
+    // Risk bar chart
+    new Chart(document.getElementById('riskChart'), {
+      type: 'bar',
+      data: {
+        labels: ['交易', '订单', '用户', '基础', '数据'],
+        datasets: [{
+          label: '健康',
+          data: [8, 6, 5, 7, 4],
+          backgroundColor: 'rgba(16,185,129,0.7)',
+          borderRadius: 3,
+        }, {
+          label: '风险',
+          data: [1, 2, 0, 1, 1],
+          backgroundColor: 'rgba(239,68,68,0.7)',
+          borderRadius: 3,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: true, position: 'bottom', labels: { boxWidth: 12, padding: 12, font: { size: 11 } } }
+        },
+        scales: {
+          x: { stacked: true, grid: { display: false }, ticks: { font: { size: 10 } } },
+          y: { stacked: true, grid: { color: 'rgba(51,65,85,0.4)' }, ticks: { font: { size: 10 }, stepSize: 2 } }
+        }
+      }
+    });
+
+    // Coverage doughnut chart
+    new Chart(document.getElementById('coverageChart'), {
+      type: 'doughnut',
+      data: {
+        labels: ['已覆盖', '未覆盖'],
+        datasets: [{
+          data: [76, 24],
+          backgroundColor: ['#8B5CF6', 'rgba(51,65,85,0.6)'],
+          borderColor: ['#8B5CF6', '#334155'],
+          borderWidth: 2,
+          hoverOffset: 6,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '68%',
+        plugins: {
+          legend: { display: true, position: 'bottom', labels: { boxWidth: 12, padding: 12, font: { size: 11 } } },
+          tooltip: {
+            callbacks: {
+              label: ctx => ` ${ctx.label}: ${ctx.parsed}%`
+            }
+          }
+        }
+      },
+      plugins: [{
+        id: 'centerText',
+        beforeDraw(chart) {
+          const { ctx, chartArea: { top, bottom, left, right } } = chart;
+          const cx = (left + right) / 2;
+          const cy = (top + bottom) / 2;
+          ctx.save();
+          ctx.font = "700 28px 'JetBrains Mono'";
+          ctx.fillStyle = '#8B5CF6';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('76%', cx, cy - 6);
+          ctx.font = "500 10px 'Inter'";
+          ctx.fillStyle = '#64748B';
+          ctx.fillText('覆盖率', cx, cy + 16);
+          ctx.restore();
+        }
+      }]
+    });
+
+    // Filter tabs
+    document.querySelectorAll('.filter-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+      });
+    });
+  </script>
+</body>
+</html>

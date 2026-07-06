@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>灵镜 (LingPrism) — 用户平台</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700&family=Source+Sans+3:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #FFF7ED;
+      --surface: #FFFFFF;
+      --surface-warm: #FFFBF5;
+      --border: #FED7AA;
+      --border-light: #FFEDD5;
+      --text-primary: #431407;
+      --text-secondary: #9A3412;
+      --text-muted: #C2410C;
+      --accent: #F97316;
+      --accent-hover: #EA580C;
+      --accent-light: #FFF7ED;
+      --accent-soft: #FFEDD5;
+      --success: #16A34A;
+      --radius: 12px;
+      --radius-sm: 8px;
+      --font-display: 'Merriweather', Georgia, serif;
+      --font-body: 'Source Sans 3', -apple-system, sans-serif;
+      --shadow: 0 1px 3px rgba(249,115,22,0.08), 0 4px 16px rgba(249,115,22,0.06);
+      --shadow-hover: 0 4px 20px rgba(249,115,22,0.14);
+    }
+
+    html { font-size: 16px; }
+    body {
+      font-family: var(--font-body);
+      background: var(--bg);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Topbar */
+    .topbar {
+      height: 60px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border-light);
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      gap: 24px;
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      box-shadow: var(--shadow);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: var(--text-primary);
+      flex-shrink: 0;
+    }
+    .brand-icon {
+      width: 36px; height: 36px;
+      background: linear-gradient(135deg, #F97316, #FB923C);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--font-display);
+      font-size: 18px; color: #fff; font-weight: 700;
+    }
+    .brand-text {
+      font-family: var(--font-display);
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+    .brand-sub { font-family: var(--font-body); font-weight: 400; font-size: 13px; color: var(--text-muted); margin-left: 4px; }
+
+    .search-box {
+      flex: 1;
+      max-width: 480px;
+      position: relative;
+    }
+    .search-box input {
+      width: 100%;
+      padding: 10px 16px 10px 40px;
+      border: 1px solid var(--border-light);
+      border-radius: 99px;
+      font-size: 15px;
+      font-family: var(--font-body);
+      background: var(--surface-warm);
+      color: var(--text-primary);
+      transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+    }
+    .search-box input:focus {
+      outline: none;
+      border-color: var(--accent);
+      background: #fff;
+      box-shadow: 0 0 0 3px rgba(249,115,22,0.15);
+    }
+    .search-box input::placeholder { color: #D97706; opacity: 0.6; }
+    .search-icon {
+      position: absolute;
+      left: 14px; top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+      font-size: 16px;
+      pointer-events: none;
+    }
+
+    .topbar-nav { display: flex; gap: 4px; margin-left: auto; }
+    .topbar-nav a {
+      padding: 7px 14px;
+      border-radius: 99px;
+      font-size: 14px;
+      font-weight: 500;
+      text-decoration: none;
+      color: var(--text-secondary);
+      transition: background 0.15s, color 0.15s;
+    }
+    .topbar-nav a:hover { background: var(--accent-soft); color: var(--accent); }
+    .topbar-nav a.active { background: var(--accent); color: #fff; }
+    .topbar-nav a:active { transform: scale(0.97); }
+
+    .user-area {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-left: 8px;
+    }
+    .avatar {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #FDBA74, #F97316);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; font-weight: 600; color: #fff;
+      cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .avatar:hover { transform: scale(1.05); box-shadow: var(--shadow-hover); }
+    .avatar:active { transform: scale(0.97); }
+
+    /* Layout */
+    .layout {
+      display: flex;
+      margin-top: 60px;
+      flex: 1;
+      min-height: calc(100vh - 96px);
+    }
+
+    /* Sidebar */
+    .sidebar {
+      width: 260px;
+      background: var(--surface);
+      border-right: 1px solid var(--border-light);
+      display: flex;
+      flex-direction: column;
+      transition: width 0.25s, opacity 0.25s;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+    .sidebar.collapsed { width: 0; opacity: 0; pointer-events: none; }
+    .sidebar-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 16px 12px;
+      border-bottom: 1px solid var(--border-light);
+    }
+    .sidebar-title { font-size: 13px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    .collapse-btn {
+      background: none; border: none; cursor: pointer;
+      color: var(--text-muted); font-size: 16px; padding: 4px;
+      border-radius: 4px;
+      transition: background 0.15s, color 0.15s;
+    }
+    .collapse-btn:hover { background: var(--accent-soft); color: var(--accent); }
+
+    .session-group { padding: 8px 0; }
+    .session-date {
+      padding: 6px 16px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+    .session-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 10px 16px;
+      cursor: pointer;
+      border-left: 3px solid transparent;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .session-item:hover { background: var(--accent-light); }
+    .session-item.active { background: var(--accent-soft); border-left-color: var(--accent); }
+    .session-item:active { background: #FED7AA; }
+    .session-icon { font-size: 14px; margin-top: 2px; opacity: 0.6; }
+    .session-text { flex: 1; min-width: 0; }
+    .session-name {
+      font-size: 14px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .session-time { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+    .session-star { color: #F59E0B; font-size: 12px; }
+
+    .new-chat-btn {
+      margin: 12px 16px;
+      padding: 10px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      font-weight: 600;
+      font-family: var(--font-body);
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+    }
+    .new-chat-btn:hover { background: var(--accent-hover); }
+    .new-chat-btn:active { transform: scale(0.98); }
+
+    /* Main content */
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      position: relative;
+    }
+
+    .expand-sidebar {
+      position: absolute;
+      left: 12px; top: 12px;
+      background: var(--surface);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-sm);
+      padding: 6px 10px;
+      font-size: 13px;
+      cursor: pointer;
+      display: none;
+      color: var(--text-secondary);
+      transition: background 0.15s;
+      z-index: 10;
+    }
+    .expand-sidebar:hover { background: var(--accent-soft); }
+    .sidebar.collapsed ~ .main .expand-sidebar { display: block; }
+
+    /* Quick entries (home state) */
+    .home-view { padding: 40px 48px; flex: 1; overflow-y: auto; }
+    .home-view.hidden { display: none; }
+    .home-greeting {
+      font-family: var(--font-display);
+      font-size: 32px;
+      font-weight: 700;
+      line-height: 1.3;
+      margin-bottom: 8px;
+      letter-spacing: -0.02em;
+    }
+    .home-sub { font-size: 17px; color: var(--text-secondary); margin-bottom: 36px; }
+
+    .quick-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-bottom: 36px;
+    }
+    .quick-card {
+      background: var(--surface);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius);
+      padding: 24px;
+      cursor: pointer;
+      transition: box-shadow 0.2s, transform 0.15s, border-color 0.2s;
+    }
+    .quick-card:hover { box-shadow: var(--shadow-hover); transform: translateY(-2px); border-color: var(--border); }
+    .quick-card:active { transform: translateY(0); }
+    .quick-icon { font-size: 28px; margin-bottom: 12px; }
+    .quick-title { font-family: var(--font-display); font-size: 17px; font-weight: 700; margin-bottom: 6px; }
+    .quick-desc { font-size: 14px; color: var(--text-secondary); line-height: 1.5; }
+
+    .rec-section h3 {
+      font-family: var(--font-display);
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+    .rec-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+    .rec-card {
+      background: var(--surface);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-sm);
+      padding: 18px 20px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .rec-card:hover { background: var(--surface-warm); border-color: var(--border); }
+    .rec-card:active { background: var(--accent-soft); }
+    .rec-tag {
+      display: inline-block;
+      padding: 2px 8px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      border-radius: 99px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .rec-title { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+    .rec-meta { font-size: 13px; color: var(--text-muted); }
+
+    /* Chat view */
+    .chat-view {
+      flex: 1;
+      display: none;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .chat-view.active { display: flex; }
+
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px 48px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .template-card {
+      background: linear-gradient(135deg, #FFF7ED, #FFEDD5);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      max-width: 640px;
+      align-self: flex-end;
+      margin-right: 48px;
+    }
+    .template-card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .template-badge {
+      background: var(--accent);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 99px;
+    }
+    .template-card p { font-size: 14px; color: var(--text-secondary); margin-bottom: 12px; line-height: 1.5; }
+    .template-actions { display: flex; gap: 8px; }
+    .btn {
+      padding: 7px 16px;
+      border-radius: 99px;
+      font-size: 14px;
+      font-weight: 600;
+      font-family: var(--font-body);
+      cursor: pointer;
+      border: none;
+      transition: background 0.15s, transform 0.1s;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn-accent { background: var(--accent); color: #fff; }
+    .btn-accent:hover { background: var(--accent-hover); }
+    .btn-ghost { background: transparent; color: var(--text-secondary); border: 1px solid var(--border); }
+    .btn-ghost:hover { background: var(--accent-soft); }
+
+    .msg { max-width: 640px; display: flex; flex-direction: column; gap: 6px; }
+    .msg.user { align-self: flex-end; }
+    .msg.assistant { align-self: flex-start; }
+    .msg-label { font-size: 12px; font-weight: 600; color: var(--text-muted); padding: 0 4px; }
+    .msg-bubble {
+      padding: 16px 20px;
+      border-radius: var(--radius);
+      font-size: 15px;
+      line-height: 1.65;
+    }
+    .msg.user .msg-bubble {
+      background: var(--accent);
+      color: #fff;
+      border-bottom-right-radius: 4px;
+    }
+    .msg.assistant .msg-bubble {
+      background: var(--surface);
+      border: 1px solid var(--border-light);
+      border-bottom-left-radius: 4px;
+    }
+    .msg-bubble strong { font-weight: 600; }
+    .msg-bubble .source {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 12px;
+      padding: 4px 10px;
+      background: var(--accent-light);
+      border-radius: 99px;
+      font-size: 12px;
+      color: var(--accent);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .msg-bubble .source:hover { background: var(--accent-soft); }
+    .msg-bubble .interrupted {
+      display: inline-block;
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--text-muted);
+      font-style: italic;
+    }
+    .status-line {
+      font-size: 13px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .status-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: pulse 1.2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    /* Input area */
+    .chat-input-area {
+      padding: 16px 48px 24px;
+      background: linear-gradient(to top, var(--bg) 60%, transparent);
+    }
+    .input-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      display: flex;
+      align-items: flex-end;
+      gap: 12px;
+      box-shadow: var(--shadow);
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .input-wrap:focus-within {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(249,115,22,0.12), var(--shadow);
+    }
+    .input-wrap textarea {
+      flex: 1;
+      border: none;
+      outline: none;
+      font-size: 15px;
+      font-family: var(--font-body);
+      resize: none;
+      min-height: 24px;
+      max-height: 120px;
+      line-height: 1.5;
+      color: var(--text-primary);
+      background: transparent;
+    }
+    .input-wrap textarea::placeholder { color: #D97706; opacity: 0.5; }
+    .send-btn {
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: none;
+      color: #fff;
+      font-size: 18px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      transition: background 0.15s, transform 0.1s;
+    }
+    .send-btn:hover { background: var(--accent-hover); }
+    .send-btn:active { transform: scale(0.93); }
+    .input-hint { font-size: 12px; color: var(--text-muted); text-align: center; margin-top: 8px; }
+
+    /* Footer */
+    .footer {
+      height: 36px;
+      background: var(--surface);
+      border-top: 1px solid var(--border-light);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    @media (max-width: 900px) {
+      .quick-grid { grid-template-columns: 1fr; }
+      .rec-cards { grid-template-columns: 1fr; }
+      .home-view, .chat-messages, .chat-input-area { padding-left: 20px; padding-right: 20px; }
+      .sidebar { position: fixed; top: 60px; bottom: 36px; left: 0; z-index: 50; box-shadow: var(--shadow-hover); }
+    }
+  </style>
+</head>
+<body>
+
+  <header class="topbar">
+    <a class="brand" href="user.html">
+      <div class="brand-icon">镜</div>
+      <span class="brand-text">灵镜 <span class="brand-sub">LingPrism</span></span>
+    </a>
+    <div class="search-box">
+      <span class="search-icon">⌕</span>
+      <input type="text" placeholder="搜索项目、文档或代码…">
+    </div>
+    <nav class="topbar-nav">
+      <a href="admin.html">管理后台</a>
+      <a href="user.html" class="active">用户平台</a>
+      <a href="monitor.html">监控中心</a>
+    </nav>
+    <div class="user-area">
+      <div class="avatar">刘</div>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar" id="sidebar">
+      <button class="new-chat-btn" id="newChatBtn">+ 新对话</button>
+      <div class="sidebar-header">
+        <span class="sidebar-title">历史会话</span>
+        <button class="collapse-btn" id="collapseBtn" title="折叠">◀</button>
+      </div>
+      <div class="session-group">
+        <div class="session-date">今天</div>
+        <div class="session-item active" data-chat="payment">
+          <span class="session-icon">💬</span>
+          <div class="session-text">
+            <div class="session-name">支付服务的核心流程</div>
+            <div class="session-time">10:32</div>
+          </div>
+          <span class="session-star">★</span>
+        </div>
+        <div class="session-item" data-chat="order">
+          <span class="session-icon">💬</span>
+          <div class="session-text">
+            <div class="session-name">订单状态回滚代码</div>
+            <div class="session-time">09:15</div>
+          </div>
+        </div>
+      </div>
+      <div class="session-group">
+        <div class="session-date">昨天</div>
+        <div class="session-item">
+          <span class="session-icon">💬</span>
+          <div class="session-text">
+            <div class="session-name">用户中心架构图</div>
+            <div class="session-time">16:48</div>
+          </div>
+        </div>
+        <div class="session-item">
+          <span class="session-icon">💬</span>
+          <div class="session-text">
+            <div class="session-name">MCP 服务怎么接入</div>
+            <div class="session-time">14:22</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <button class="expand-sidebar" id="expandBtn">▶ 历史会话</button>
+
+      <!-- Home view -->
+      <div class="home-view" id="homeView">
+        <h1 class="home-greeting">你好，有什么想了解的项目知识？</h1>
+        <p class="home-sub">用自然语言提问，灵镜会帮你找到架构、代码与文档中的答案。</p>
+
+        <div class="quick-grid">
+          <div class="quick-card" id="startChat">
+            <div class="quick-icon">💡</div>
+            <div class="quick-title">智能问答</div>
+            <div class="quick-desc">自然语言提问，获取项目架构、代码逻辑与文档知识</div>
+          </div>
+          <div class="quick-card">
+            <div class="quick-icon">◇</div>
+            <div class="quick-title">架构图浏览</div>
+            <div class="quick-desc">查看官方发布的系统架构图，交互探索服务节点</div>
+          </div>
+          <div class="quick-card">
+            <div class="quick-icon">⌕</div>
+            <div class="quick-title">代码检索</div>
+            <div class="quick-desc">语义或符号检索，定位函数定义与调用关系</div>
+          </div>
+        </div>
+
+        <div class="rec-section">
+          <h3>推荐知识</h3>
+          <div class="rec-cards">
+            <div class="rec-card">
+              <span class="rec-tag">ADR</span>
+              <div class="rec-title">支付服务幂等性设计 ADR-003</div>
+              <div class="rec-meta">payment-service · 更新于 7月4日</div>
+            </div>
+            <div class="rec-card">
+              <span class="rec-tag">培训文档</span>
+              <div class="rec-title">订单平台新人 onboarding 指南</div>
+              <div class="rec-meta">order-platform · 更新于 7月2日</div>
+            </div>
+            <div class="rec-card">
+              <span class="rec-tag">架构图</span>
+              <div class="rec-title">支付中台 2026-Q2 官方架构</div>
+              <div class="rec-meta">12 个服务节点 · 已发布</div>
+            </div>
+            <div class="rec-card">
+              <span class="rec-tag">运维手册</span>
+              <div class="rec-title">用户中心部署与故障排查</div>
+              <div class="rec-meta">user-center · 更新于 6月28日</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Chat view -->
+      <div class="chat-view" id="chatView">
+        <div class="chat-messages">
+          <div class="msg user">
+            <span class="msg-label">你</span>
+            <div class="msg-bubble">支付服务的核心流程是什么？</div>
+          </div>
+
+          <div class="template-card">
+            <div class="template-card-header">
+              <span class="template-badge">模板推荐</span>
+              <span style="font-size:13px;color:var(--text-muted)">匹配度 92%</span>
+            </div>
+            <p>检测到相似问题模板「服务功能介绍」，是否按标准格式查看？<br>输出格式：服务名称 → 业务职责 → 核心接口 → 依赖的下游服务 → 负责人</p>
+            <div class="template-actions">
+              <button class="btn btn-accent">套用模板</button>
+              <button class="btn btn-ghost">忽略</button>
+            </div>
+          </div>
+
+          <div class="msg assistant">
+            <span class="msg-label">灵镜</span>
+            <div class="msg-bubble">
+              <strong>支付中台服务</strong>的核心流程如下：<br><br>
+              1. <strong>收单</strong>：接收上游业务系统的支付请求，校验订单信息与金额<br>
+              2. <strong>路由</strong>：根据支付渠道策略选择最优通道（微信/支付宝/银联）<br>
+              3. <strong>执行</strong>：调用渠道 SDK 发起扣款，维护幂等键防止重复支付<br>
+              4. <strong>回调</strong>：接收渠道异步通知，更新订单状态并通知下游订单服务<br>
+              5. <strong>对账</strong>：T+1 日与渠道账单核对，差异进入人工处理队列
+              <span class="source">📄 来源：支付服务 ADR-003</span>
+            </div>
+          </div>
+
+          <div class="msg user">
+            <span class="msg-label">你</span>
+            <div class="msg-bubble">那它的下游依赖有哪些？</div>
+          </div>
+
+          <div class="msg assistant">
+            <span class="msg-label">灵镜</span>
+            <div class="msg-bubble">
+              基于上下文，「它」指代<strong>支付中台服务</strong>，其下游依赖包括：<br><br>
+              • <strong>order-platform</strong> — 接收支付结果回调，更新订单状态<br>
+              • <strong>notification-hub</strong> — 发送支付成功/失败通知<br>
+              • <strong>reconciliation-service</strong> — 对账差异处理<br>
+              • <strong>risk-engine</strong> — 实时风控校验（同步调用）
+              <span class="source">◇ 来源：2026-Q2 官方架构图</span>
+            </div>
+          </div>
+
+          <div class="status-line">
+            <span class="status-dot"></span>
+            正在检索代码图谱…
+          </div>
+        </div>
+
+        <div class="chat-input-area">
+          <div class="input-wrap">
+            <textarea rows="1" placeholder="继续追问，或输入新问题…"></textarea>
+            <button class="send-btn" title="发送">↑</button>
+          </div>
+          <p class="input-hint">Enter 发送 · Shift+Enter 换行 · 支持连续追问</p>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <footer class="footer">© 2026 NL Hermes</footer>
+
+  <script>
+    const sidebar = document.getElementById('sidebar');
+    const homeView = document.getElementById('homeView');
+    const chatView = document.getElementById('chatView');
+
+    document.getElementById('collapseBtn').addEventListener('click', () => {
+      sidebar.classList.add('collapsed');
+    });
+    document.getElementById('expandBtn').addEventListener('click', () => {
+      sidebar.classList.remove('collapsed');
+    });
+
+    function showChat() {
+      homeView.classList.add('hidden');
+      chatView.classList.add('active');
+    }
+
+    document.getElementById('startChat').addEventListener('click', showChat);
+    document.getElementById('newChatBtn').addEventListener('click', showChat);
+
+    document.querySelectorAll('.session-item[data-chat]').forEach(item => {
+      item.addEventListener('click', () => {
+        document.querySelectorAll('.session-item').forEach(s => s.classList.remove('active'));
+        item.classList.add('active');
+        showChat();
+      });
+    });
+  </script>
+</body>
+</html>
