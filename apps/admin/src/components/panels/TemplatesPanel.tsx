@@ -159,12 +159,13 @@ export function TemplatesPanel() {
   };
 
   return (
-    <>
+    <div className="admin-panel">
       <Card
         type="inner"
         title="问答模板"
         extra={<Button type="primary" onClick={openCreate}>新建模板</Button>}
         style={{ marginBottom: 16 }}
+        className="admin-panel-inner"
       >
         <Table
           rowKey="id"
@@ -280,6 +281,6 @@ export function TemplatesPanel() {
           ) : null}
         </Form>
       </Modal>
-    </>
+    </div>
   );
 }

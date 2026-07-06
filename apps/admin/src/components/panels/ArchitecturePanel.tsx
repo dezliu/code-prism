@@ -59,8 +59,8 @@ export function ArchitecturePanel() {
   };
 
   return (
-    <>
-      <Card type="inner" style={{ marginBottom: 16 }}>
+    <div className="admin-panel">
+      <Card type="inner" style={{ marginBottom: 16 }} className="admin-panel-inner">
         <Space wrap>
           <Select
             style={{ width: 280 }}
@@ -78,13 +78,13 @@ export function ArchitecturePanel() {
           <Button onClick={publish}>发布官方版</Button>
         </Space>
       </Card>
-      <Card type="inner" title="架构草稿预览">
+      <Card type="inner" title="架构草稿预览" className="admin-panel-inner">
         {graph ? (
           <ArchitectureGraph data={graph} />
         ) : (
           '选择仓库并点击「生成草稿」'
         )}
       </Card>
-    </>
+    </div>
   );
 }

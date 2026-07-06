@@ -60,5 +60,7 @@ export function PageHeader({
 }
 
 export { AppShell as default };
+export { AppNav } from './AppNav';
+export { TopbarBrand } from './TopbarBrand';
 export { LoginForm } from './LoginForm';
 export type { LoginFormProps, LoginFormValues } from './LoginForm';

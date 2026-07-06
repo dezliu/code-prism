@@ -1,17 +1,69 @@
 'use client';
 
-import { Button, Card, Input, Space, Tag, Typography } from 'antd';
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { AppShell, PageHeader } from '@lingprism/ui';
 import {
   fetchCurrentUser,
   logout,
   useChatSSE,
   type AuthUser,
 } from '@lingprism/graphql';
+import { getAuthToken } from '@lingprism/shared';
+import { GRAPHQL_ENDPOINT } from '@lingprism/graphql/constants';
+import { UserShell } from '../components/UserShell';
 
-const { Text } = Typography;
+interface ChatSession {
+  id: string;
+  title: string;
+  updatedAt: string;
+}
+
+const RECOMMENDATIONS = [
+  { tag: 'ADR', title: '支付服务幂等性设计 ADR-003', meta: 'payment-service · 更新于 7月4日' },
+  { tag: '培训文档', title: '订单平台新人 onboarding 指南', meta: 'order-platform · 更新于 7月2日' },
+  { tag: '架构图', title: '支付中台 2026-Q2 官方架构', meta: '12 个服务节点 · 已发布' },
+  { tag: '运维手册', title: '用户中心部署与故障排查', meta: 'user-center · 更新于 6月28日' },
+];
+
+async function fetchSessions(): Promise<ChatSession[]> {
+  const res = await fetch(GRAPHQL_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${getAuthToken()}`,
+    },
+    body: JSON.stringify({ query: 'query { chatSessions { id title updatedAt } }' }),
+  });
+  const json = await res.json();
+  if (json.errors?.length) return [];
+  return json.data.chatSessions;
+}
+
+function groupSessionsByDate(sessions: ChatSession[]): Array<{ label: string; items: ChatSession[] }> {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  const groups: Record<string, ChatSession[]> = {};
+  for (const session of sessions) {
+    const date = new Date(session.updatedAt);
+    date.setHours(0, 0, 0, 0);
+    let label = '更早';
+    if (date.getTime() === today.getTime()) label = '今天';
+    else if (date.getTime() === yesterday.getTime()) label = '昨天';
+    if (!groups[label]) groups[label] = [];
+    groups[label].push(session);
+  }
+
+  const order = ['今天', '昨天', '更早'];
+  return order.filter((l) => groups[l]?.length).map((label) => ({ label, items: groups[label] }));
+}
+
+function formatSessionTime(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+}
 
 export default function ChatPageInner() {
   const router = useRouter();
@@ -20,20 +72,29 @@ export default function ChatPageInner() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [input, setInput] = useState('');
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [showChat, setShowChat] = useState(!!sessionId);
   const chat = useChatSSE();
 
   useEffect(() => {
     fetchCurrentUser()
-      .then((current) => {
+      .then(async (current) => {
         if (!current) {
           router.replace('/login');
           return;
         }
         setUser(current);
+        const list = await fetchSessions();
+        setSessions(list);
       })
       .catch(() => router.replace('/login'))
       .finally(() => setCheckingAuth(false));
   }, [router]);
+
+  useEffect(() => {
+    if (sessionId) setShowChat(true);
+  }, [sessionId]);
 
   const handleSend = async () => {
     const message = input.trim();
@@ -41,6 +102,7 @@ export default function ChatPageInner() {
       return;
     }
     setInput('');
+    setShowChat(true);
     await chat.send(message, sessionId);
   };
 
@@ -49,103 +111,222 @@ export default function ChatPageInner() {
     router.replace('/login');
   };
 
+  const handleNewChat = () => {
+    setShowChat(true);
+    router.push('/');
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
   if (checkingAuth) {
     return null;
   }
 
-  return (
-    <AppShell appTitle="用户平台" accentColor="#f97316">
-      <PageHeader
-        title="智能问答"
-        description={`欢迎，${user?.displayName ?? user?.email}`}
-      />
+  const sessionGroups = groupSessionsByDate(sessions);
+  const inChat = showChat || !!chat.content || chat.streaming;
 
-      <Card
-        title="对话"
-        extra={
-          <Space>
-            <Button href="/sessions">历史会话</Button>
-            <Button href="/architecture">架构图</Button>
-            <Tag color="orange">{user?.role}</Tag>
-            <Button size="small" onClick={handleLogout}>
-              退出
-            </Button>
-          </Space>
-        }
-      >
-        {sessionId ? (
-          <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
-            当前会话：{sessionId.slice(0, 8)}…
-          </Text>
-        ) : null}
-
-        {chat.status ? (
-          <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
-            阶段：{chat.status.phase}
-            {chat.interrupted ? '（已中断）' : ''}
-          </Text>
-        ) : null}
-
-        {chat.templateHints.length > 0 ? (
-          <div style={{ marginBottom: 12 }}>
-            {chat.templateHints.map((hint) => (
-              <Tag
-                key={hint.templateId}
-                color="purple"
-                style={{ cursor: 'pointer', marginBottom: 4 }}
-                onClick={() => setInput(hint.preview.replace('{repo}', '当前项目').replace('{topic}', '核心模块'))}
-              >
-                模板：{hint.name}
-              </Tag>
-            ))}
-          </div>
-        ) : null}
-
-        {chat.sources.length > 0 ? (
-          <div style={{ marginBottom: 12 }}>
-            {chat.sources.map((source) => (
-              <Tag key={`${source.title}-${source.ref ?? ''}`} color="blue">
-                来源：{source.title}
-              </Tag>
-            ))}
-          </div>
-        ) : null}
-
-        <div
-          style={{
-            minHeight: 160,
-            padding: 16,
-            background: '#fafafa',
-            borderRadius: 8,
-            marginBottom: 16,
-            whiteSpace: 'pre-wrap',
-          }}
+  const sidebar = (
+    <aside className={`user-sidebar${sidebarCollapsed ? ' collapsed' : ''}`}>
+      <button type="button" className="user-new-chat-btn" onClick={handleNewChat}>
+        + 新对话
+      </button>
+      <div className="user-sidebar-header">
+        <span className="user-sidebar-title">历史会话</span>
+        <button
+          type="button"
+          className="user-collapse-btn"
+          title="折叠"
+          onClick={() => setSidebarCollapsed(true)}
         >
-          {chat.content || '输入问题开始对话…'}
+          ◀
+        </button>
+      </div>
+      <div className="user-session-group">
+        {sessionGroups.length === 0 ? (
+          <div className="user-session-date">暂无会话</div>
+        ) : (
+          sessionGroups.map((group) => (
+            <div key={group.label}>
+              <div className="user-session-date">{group.label}</div>
+              {group.items.map((item) => (
+                <a
+                  key={item.id}
+                  href={`/?sessionId=${item.id}`}
+                  className={`user-session-item${sessionId === item.id ? ' active' : ''}`}
+                  onClick={() => setShowChat(true)}
+                >
+                  <span className="user-session-icon">💬</span>
+                  <div className="user-session-text">
+                    <div className="user-session-name">{item.title}</div>
+                    <div className="user-session-time">{formatSessionTime(item.updatedAt)}</div>
+                  </div>
+                </a>
+              ))}
+            </div>
+          ))
+        )}
+      </div>
+    </aside>
+  );
+
+  return (
+    <UserShell user={user} sidebar={sidebar}>
+      {sidebarCollapsed ? (
+        <button
+          type="button"
+          className="user-collapse-btn"
+          style={{ position: 'absolute', left: 12, top: 12, zIndex: 10, background: '#fff', border: '1px solid #ffedd5', padding: '6px 10px' }}
+          onClick={() => setSidebarCollapsed(false)}
+        >
+          ▶ 历史会话
+        </button>
+      ) : null}
+
+      {!inChat ? (
+        <div className="user-home-view">
+          <h1 className="user-home-greeting">你好，有什么想了解的项目知识？</h1>
+          <p className="user-home-sub">用自然语言提问，灵镜会帮你找到架构、代码与文档中的答案。</p>
+
+          <div className="user-quick-grid">
+            <button type="button" className="user-quick-card" onClick={() => setShowChat(true)} style={{ textAlign: 'left' }}>
+              <div className="user-quick-icon">💡</div>
+              <div className="user-quick-title">智能问答</div>
+              <div className="user-quick-desc">自然语言提问，获取项目架构、代码逻辑与文档知识</div>
+            </button>
+            <a href="/architecture" className="user-quick-card">
+              <div className="user-quick-icon">◇</div>
+              <div className="user-quick-title">架构图浏览</div>
+              <div className="user-quick-desc">查看官方发布的系统架构图，交互探索服务节点</div>
+            </a>
+            <button type="button" className="user-quick-card" onClick={() => setShowChat(true)} style={{ textAlign: 'left' }}>
+              <div className="user-quick-icon">⌕</div>
+              <div className="user-quick-title">代码检索</div>
+              <div className="user-quick-desc">语义或符号检索，定位函数定义与调用关系</div>
+            </button>
+          </div>
+
+          <div className="user-rec-section">
+            <h3>推荐知识</h3>
+            <div className="user-rec-cards">
+              {RECOMMENDATIONS.map((item) => (
+                <div key={item.title} className="user-rec-card">
+                  <span className="user-rec-tag">{item.tag}</span>
+                  <div className="user-rec-title">{item.title}</div>
+                  <div className="user-rec-meta">{item.meta}</div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
+      ) : (
+        <div className="user-chat-view">
+          <div className="user-chat-toolbar">
+            <a href="/architecture">架构图</a>
+            <a href="/sessions">全部会话</a>
+            <button type="button" onClick={handleLogout}>退出</button>
+          </div>
 
-        {chat.error ? (
-          <Text type="danger" style={{ display: 'block', marginBottom: 12 }}>
-            {chat.error}
-          </Text>
-        ) : null}
+          <div className="user-chat-messages">
+            {chat.templateHints.length > 0 ? (
+              chat.templateHints.map((hint) => (
+                <div key={hint.templateId} className="user-template-card">
+                  <div className="user-template-card-header">
+                    <span className="user-template-badge">模板推荐</span>
+                    <span style={{ fontSize: 13, color: 'var(--user-text-muted)' }}>
+                      模板匹配
+                    </span>
+                  </div>
+                  <p>
+                    检测到相似问题模板「{hint.name}」，是否按标准格式查看？
+                    <br />
+                    {hint.preview}
+                  </p>
+                  <div className="user-template-actions">
+                    <button
+                      type="button"
+                      className="user-btn user-btn-accent"
+                      onClick={() => setInput(hint.preview.replace('{repo}', '当前项目').replace('{topic}', '核心模块'))}
+                    >
+                      套用模板
+                    </button>
+                    <button type="button" className="user-btn user-btn-ghost">忽略</button>
+                  </div>
+                </div>
+              ))
+            ) : null}
 
-        <Space.Compact style={{ width: '100%' }}>
-          <Input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="例如：支付服务核心流程是什么？"
-            onPressEnter={handleSend}
-            disabled={chat.streaming}
-          />
-          <Button type="primary" onClick={handleSend} loading={chat.streaming}>
-            发送
-          </Button>
-          <Button danger onClick={chat.stop} disabled={!chat.streaming}>
-            停止
-          </Button>
-        </Space.Compact>
-      </Card>
-    </AppShell>
+            {chat.content ? (
+              <div className="user-msg assistant">
+                <span className="user-msg-label">灵镜</span>
+                <div className="user-msg-bubble">
+                  {chat.content}
+                  {chat.sources.length > 0 ? (
+                    <div style={{ marginTop: 4 }}>
+                      {chat.sources.map((source) => (
+                        <span key={`${source.title}-${source.ref ?? ''}`} className="user-source-tag">
+                          📄 来源：{source.title}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                  {chat.interrupted ? (
+                    <span style={{ display: 'block', marginTop: 8, fontSize: 12, color: 'var(--user-text-muted)', fontStyle: 'italic' }}>
+                      （已中断）
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            ) : (
+              <div className="user-msg assistant">
+                <span className="user-msg-label">灵镜</span>
+                <div className="user-msg-bubble">输入问题开始对话…</div>
+              </div>
+            )}
+
+            {chat.streaming && chat.status ? (
+              <div className="user-status-line">
+                <span className="user-status-dot" />
+                阶段：{chat.status.phase}
+              </div>
+            ) : null}
+
+            {chat.error ? <div className="user-error-text">{chat.error}</div> : null}
+          </div>
+
+          <div className="user-chat-input-area">
+            <div className="user-input-wrap">
+              <textarea
+                rows={1}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="继续追问，或输入新问题…"
+                disabled={chat.streaming}
+              />
+              <button
+                type="button"
+                className="user-send-btn"
+                title="发送"
+                onClick={handleSend}
+                disabled={chat.streaming || !input.trim()}
+              >
+                ↑
+              </button>
+              {chat.streaming ? (
+                <button type="button" className="user-stop-btn" onClick={chat.stop}>
+                  停止
+                </button>
+              ) : null}
+            </div>
+            <p className="user-input-hint">Enter 发送 · Shift+Enter 换行 · 支持连续追问</p>
+          </div>
+        </div>
+      )}
+    </UserShell>
   );
 }

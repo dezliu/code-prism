@@ -59,8 +59,8 @@ export function KnowledgePanel() {
   };
 
   return (
-    <>
-      <Card type="inner" title="新建文档" style={{ marginBottom: 16 }}>
+    <div className="admin-panel">
+      <Card type="inner" title="新建文档" style={{ marginBottom: 16 }} className="admin-panel-inner">
         <Form form={form} layout="vertical" onFinish={onCreate}>
           <Form.Item name="title" label="标题" rules={[{ required: true }]}>
             <Input />
@@ -78,7 +78,7 @@ export function KnowledgePanel() {
           <Button type="primary" htmlType="submit">保存草稿</Button>
         </Form>
       </Card>
-      <Card type="inner" title="文档列表">
+      <Card type="inner" title="文档列表" className="admin-panel-inner">
         <Table
           rowKey="id"
           loading={loading}
@@ -100,6 +100,6 @@ export function KnowledgePanel() {
           ]}
         />
       </Card>
-    </>
+    </div>
   );
 }

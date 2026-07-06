@@ -160,85 +160,97 @@ export function ReposPanel() {
 
   return (
     <>
-      <Card type="inner" title="新增仓库" style={{ marginBottom: 16 }}>
-        <Form layout="inline" onFinish={onCreate}>
-          <Form.Item name="url" rules={[{ required: true, message: '请输入 Git 地址' }]}>
-            <Input placeholder="https://github.com/org/repo.git" style={{ width: 320 }} />
-          </Form.Item>
-          <Form.Item name="authType" initialValue="https">
-            <Select style={{ width: 100 }} options={[{ value: 'https', label: 'HTTPS' }, { value: 'ssh', label: 'SSH' }]} />
-          </Form.Item>
-          <Form.Item name="defaultBranch" initialValue="main">
-            <Input placeholder="分支" style={{ width: 100 }} />
-          </Form.Item>
-          <Form.Item name="authToken">
-            <Input.Password placeholder="Token（可选）" style={{ width: 160 }} />
-          </Form.Item>
-          <Form.Item>
-            <Button type="primary" htmlType="submit">保存并测试连接</Button>
-          </Form.Item>
-        </Form>
-      </Card>
-      <Card
-        type="inner"
-        title="仓库列表"
-        extra={
-          <Select
-            value={statusFilter}
-            onChange={setStatusFilter}
-            style={{ width: 160 }}
-            options={[
-              { value: 'all', label: '全部' },
-              { value: 'connected', label: '已连接' },
-              { value: 'failed', label: '连接失败' },
-              { value: 'indexed', label: '已索引' },
-            ]}
-          />
-        }
-      >
-        <Table
-          rowKey="id"
-          loading={loading}
-          dataSource={filteredRepos}
-          columns={[
-            { title: '名称', dataIndex: 'displayName', render: (_, row) => row.displayName || row.name },
-            { title: '地址', dataIndex: 'url', ellipsis: true },
-            {
-              title: '语言分布',
-              render: (_, row) => row.languageSummary
-                ? Object.entries(row.languageSummary).slice(0, 3).map(([k, v]) => `${k}:${v}`).join(', ')
-                : '-',
-            },
-            {
-              title: '连接',
-              dataIndex: 'connectionStatus',
-              render: (v: string) => <Tag color={v === 'connected' ? 'green' : 'red'}>{v}</Tag>,
-            },
-            { title: '索引', dataIndex: 'indexStatus' },
-            {
-              title: '纳入检索库',
-              render: (_, row) => (
-                <Switch checked={row.indexedInSearch} onChange={(checked) => toggleIndexed(row.id, checked)} />
-              ),
-            },
-            {
-              title: '启用',
-              render: (_, row) => (
-                <Switch checked={row.enabled} onChange={(checked) => toggleEnabled(row.id, checked)} />
-              ),
-            },
-            {
-              title: '操作',
-              render: (_, row) => (
+      <div className="admin-panel-grid">
+        <div className="admin-panel">
+          <Card
+            type="inner"
+            title="仓库列表"
+            className="admin-panel-inner"
+            extra={
+              <Select
+                value={statusFilter}
+                onChange={setStatusFilter}
+                style={{ width: 160 }}
+                options={[
+                  { value: 'all', label: '全部' },
+                  { value: 'connected', label: '已连接' },
+                  { value: 'failed', label: '连接失败' },
+                  { value: 'indexed', label: '已索引' },
+                ]}
+              />
+            }
+          >
+            <Table
+              rowKey="id"
+              loading={loading}
+              dataSource={filteredRepos}
+              columns={[
+                { title: '名称', dataIndex: 'displayName', render: (_, row) => row.displayName || row.name },
+                { title: '地址', dataIndex: 'url', ellipsis: true },
+                {
+                  title: '语言分布',
+                  render: (_, row) => row.languageSummary
+                    ? Object.entries(row.languageSummary).slice(0, 3).map(([k, v]) => `${k}:${v}`).join(', ')
+                    : '-',
+                },
+                {
+                  title: '连接',
+                  dataIndex: 'connectionStatus',
+                  render: (v: string) => <Tag color={v === 'connected' ? 'green' : 'red'}>{v}</Tag>,
+                },
+                { title: '索引', dataIndex: 'indexStatus' },
+                {
+                  title: '纳入检索库',
+                  render: (_, row) => (
+                    <Switch checked={row.indexedInSearch} onChange={(checked) => toggleIndexed(row.id, checked)} />
+                  ),
+                },
+                {
+                  title: '启用',
+                  render: (_, row) => (
+                    <Switch checked={row.enabled} onChange={(checked) => toggleEnabled(row.id, checked)} />
+                  ),
+                },
+                {
+                  title: '操作',
+                  render: (_, row) => (
+                    <Space>
+                      <Button size="small" onClick={() => openMetaModal(row)}>元数据</Button>
+                      <Button size="small" onClick={() => retestConnection(row.id)}>重测</Button>
+                    </Space>
+                  ),
+                },
+              ]}
+            />
+          </Card>
+        </div>
+
+        <div className="admin-panel">
+          <Card type="inner" title="新增仓库配置" className="admin-panel-inner">
+            <Form layout="vertical" onFinish={onCreate}>
+              <Form.Item name="url" label="仓库地址" rules={[{ required: true, message: '请输入 Git 地址' }]}>
+                <Input placeholder="git@corp.example.com/repo.git" />
+              </Form.Item>
+              <Form.Item name="authType" label="认证方式" initialValue="https">
+                <Select options={[{ value: 'https', label: 'HTTPS Token' }, { value: 'ssh', label: 'SSH 密钥' }]} />
+              </Form.Item>
+              <Form.Item name="defaultBranch" label="默认分支" initialValue="main">
+                <Input placeholder="main" />
+              </Form.Item>
+              <Form.Item name="authToken" label="认证凭据">
+                <Input.Password placeholder="Token（可选）" />
+              </Form.Item>
+              <Form.Item>
                 <Space>
-                  <Button size="small" onClick={() => openMetaModal(row)}>元数据</Button>
-                  <Button size="small" onClick={() => retestConnection(row.id)}>重测</Button>
+                  <Button htmlType="submit">测试连接</Button>
+                  <Button type="primary" htmlType="submit">保存配置</Button>
                 </Space>
-              ),
-            },
-          ]}
-        />
-      </Card>
+              </Form.Item>
+            </Form>
+          </Card>
+        </div>
+      </div>
+
       <Modal title="编辑元数据" open={!!metaModal} onOk={saveMetadata} onCancel={() => setMetaModal(null)}>
         <Form form={metaForm} layout="vertical">
           <Form.Item name="displayName" label="业务中文名" rules={[{ required: true }]}>

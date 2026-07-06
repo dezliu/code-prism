@@ -1,15 +1,13 @@
 'use client';
 
-import { Button, Card, List, Select, Space, Typography, message } from 'antd';
+import { message } from 'antd';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AppShell, PageHeader } from '@lingprism/ui';
 import { ArchitectureGraph, type GraphData, type GraphNode } from '@lingprism/graph-viz';
 import { getAuthToken } from '@lingprism/shared';
 import { GRAPHQL_ENDPOINT } from '@lingprism/graphql/constants';
 import { fetchCurrentUser, logout, type AuthUser } from '@lingprism/graphql';
-
-const { Text } = Typography;
+import { UserShell } from '../../components/UserShell';
 
 interface ArchitectureItem {
   id: string;
@@ -65,63 +63,96 @@ export default function ArchitecturePage() {
 
   const current = items.find((item) => item.repoId === selectedRepoId);
 
+  const handleLogout = () => {
+    logout();
+    router.replace('/login');
+  };
+
   return (
-    <AppShell appTitle="用户平台" accentColor="#f97316">
-      <PageHeader
-        title="架构图浏览"
-        description={user ? `欢迎，${user.displayName}` : ''}
-        extra={
-          <Space>
-            <Button href="/">返回问答</Button>
-            <Button onClick={() => { logout(); router.replace('/login'); }}>退出</Button>
-          </Space>
-        }
-      />
-      <Card
-        title="官方架构图"
-        extra={
-          <Select
-            style={{ width: 240 }}
-            placeholder="选择项目"
-            value={selectedRepoId}
-            onChange={setSelectedRepoId}
-            options={items.map((item) => ({
-              value: item.repoId,
-              label: item.repoName ?? item.repoId,
-            }))}
-          />
-        }
-      >
-        {current ? (
-          <ArchitectureGraph
-            data={current.graphData}
-            selectedNodeId={selectedNode?.id}
-            onNodeClick={(node) => {
-              setSelectedNode(node);
-              message.info(`已选择节点：${node.label}`);
+    <UserShell user={user}>
+      <div className="user-home-view">
+        <h1 className="user-home-greeting">架构图浏览</h1>
+        <p className="user-home-sub">
+          查看官方发布的系统架构图，交互探索服务节点。
+          {user ? ` 欢迎，${user.displayName}` : ''}
+        </p>
+
+        <div className="user-arch-toolbar">
+          <select
+            className="user-arch-select"
+            value={selectedRepoId ?? ''}
+            onChange={(e) => {
+              setSelectedRepoId(e.target.value);
+              setSelectedNode(null);
             }}
-          />
-        ) : (
-          <Text type="secondary">暂无已发布官方架构图，请联系管理员发布。</Text>
-        )}
+          >
+            {items.length === 0 ? (
+              <option value="">暂无项目</option>
+            ) : (
+              items.map((item) => (
+                <option key={item.repoId} value={item.repoId}>
+                  {item.repoName ?? item.repoId}
+                </option>
+              ))
+            )}
+          </select>
+          <div className="user-arch-toolbar-actions">
+            <a href="/">返回问答</a>
+            <button type="button" onClick={handleLogout}>退出</button>
+          </div>
+        </div>
+
+        <div className="user-arch-panel">
+          {current ? (
+            <ArchitectureGraph
+              data={current.graphData}
+              selectedNodeId={selectedNode?.id}
+              onNodeClick={(node) => {
+                setSelectedNode(node);
+                message.info(`已选择节点：${node.label}`);
+              }}
+            />
+          ) : (
+            <p className="user-arch-empty">暂无已发布官方架构图，请联系管理员发布。</p>
+          )}
+        </div>
+
         {selectedNode ? (
-          <Card size="small" style={{ marginTop: 16 }} title="节点详情">
+          <div className="user-arch-node-detail">
+            <h4>节点详情</h4>
             <p>名称：{selectedNode.label}</p>
             <p>类型：{selectedNode.type}</p>
-          </Card>
+          </div>
         ) : null}
-      </Card>
-      <Card title="已发布项目" style={{ marginTop: 16 }}>
-        <List
-          dataSource={items}
-          renderItem={(item) => (
-            <List.Item>
-              {item.repoName ?? item.repoId}
-              <Button type="link" onClick={() => setSelectedRepoId(item.repoId)}>查看</Button>
-            </List.Item>
-          )}
-        />
-      </Card>
-    </AppShell>
+
+        {items.length > 0 ? (
+          <div className="user-rec-section" style={{ marginTop: 36 }}>
+            <h3>已发布项目</h3>
+            <div className="user-rec-cards">
+              {items.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`user-arch-project-card${selectedRepoId === item.repoId ? ' active' : ''}`}
+                  onClick={() => {
+                    setSelectedRepoId(item.repoId);
+                    setSelectedNode(null);
+                  }}
+                >
+                  <div>
+                    <span className="user-rec-tag">架构图</span>
+                    <div className="user-rec-title">{item.repoName ?? item.repoId}</div>
+                    <div className="user-rec-meta">
+                      {item.graphData.nodes.length} 个服务节点 · 已发布
+                    </div>
+                  </div>
+                  <span style={{ color: 'var(--user-accent)', fontSize: 13, fontWeight: 600 }}>查看 →</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </UserShell>
   );
 }

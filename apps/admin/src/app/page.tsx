@@ -56,7 +56,7 @@ function AdminHomeContent() {
       case 'alerts':
         return <AlertsPanel />;
       default:
-        return <WorkbenchPanel />;
+        return <WorkbenchPanel onSelect={(key) => setModule(key)} />;
     }
   };
 

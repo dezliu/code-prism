@@ -158,10 +158,13 @@ export function AlertsPanel() {
 
   return (
     <>
+    <div className="admin-panel-grid">
+      <div className="admin-panel">
       <Card
         type="inner"
         title="预警规则"
         extra={<Button type="primary" onClick={openCreate}>新建规则</Button>}
+        className="admin-panel-inner"
       >
         <Table
           rowKey="id"
@@ -212,6 +215,8 @@ export function AlertsPanel() {
           ]}
         />
       </Card>
+      </div>
+    </div>
       <Modal
         title={editing ? '编辑预警规则' : '新建预警规则'}
         open={modalOpen}
