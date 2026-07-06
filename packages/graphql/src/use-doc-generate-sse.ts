@@ -18,10 +18,11 @@ export interface UseDocGenerateSSEReturn {
   error: string | null;
   interrupted: boolean;
   generate: (input: {
-    docId: string;
+    itemId: string;
     title?: string;
     docType?: string;
-    repoIds?: string[];
+    /** @deprecated use itemId */
+    docId?: string;
   }) => Promise<string | null>;
   stop: () => Promise<void>;
   reset: () => void;
@@ -101,11 +102,16 @@ export function useDocGenerateSSE(): UseDocGenerateSSEReturn {
 
   const generate = useCallback(
     async (input: {
-      docId: string;
+      itemId?: string;
+      docId?: string;
       title?: string;
       docType?: string;
-      repoIds?: string[];
     }): Promise<string | null> => {
+      const resolvedItemId = input.itemId ?? input.docId;
+      if (!resolvedItemId) {
+        setError('缺少 itemId');
+        return null;
+      }
       const token = getAuthToken();
       if (!token) {
         setError('请先登录');
@@ -125,7 +131,11 @@ export function useDocGenerateSSE(): UseDocGenerateSSEReturn {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify(input),
+          body: JSON.stringify({
+            itemId: resolvedItemId,
+            title: input.title,
+            docType: input.docType,
+          }),
           signal: controller.signal,
         });
 

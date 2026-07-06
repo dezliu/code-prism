@@ -53,6 +53,7 @@ export interface CoreHttpClient {
   removeIndex(repoId: string): Promise<RemoveIndexResult>;
   search(query: string, repoIds?: string[]): Promise<SearchHit[]>;
   indexKnowledgeDoc(docId: string): Promise<{ ok: boolean; docId: string }>;
+  removeKnowledgeDoc(docId: string): Promise<{ ok: boolean; docId: string; removed: boolean }>;
   buildDocContext(repoIds: string[]): Promise<DocContextResult>;
   generateArchDraft(repoId: string): Promise<{ snapshotId: string }>;
 }
@@ -144,6 +145,13 @@ export class CoreHttpClientImpl implements CoreHttpClient {
     });
   }
 
+  async removeKnowledgeDoc(docId: string): Promise<{ ok: boolean; docId: string; removed: boolean }> {
+    return this.request('/internal/knowledge/remove', {
+      method: 'POST',
+      body: JSON.stringify({ docId }),
+    });
+  }
+
   async buildDocContext(repoIds: string[]): Promise<DocContextResult> {
     return this.request('/internal/repos/doc-context', {
       method: 'POST',
@@ -189,6 +197,10 @@ export class CoreHttpClientStub implements CoreHttpClient {
 
   async indexKnowledgeDoc(docId: string): Promise<{ ok: boolean; docId: string }> {
     return { ok: true, docId };
+  }
+
+  async removeKnowledgeDoc(docId: string): Promise<{ ok: boolean; docId: string; removed: boolean }> {
+    return { ok: true, docId, removed: true };
   }
 
   async buildDocContext(repoIds: string[]): Promise<DocContextResult> {

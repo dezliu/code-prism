@@ -12,6 +12,16 @@ import {
   DeleteRepoUseCase,
 } from '../application/repo/repo.use-cases.js';
 import {
+  ListKnowledgeBasesUseCase,
+  GetKnowledgeBaseUseCase,
+  CreateKnowledgeBaseUseCase,
+  UpdateKnowledgeBaseUseCase,
+  DeleteKnowledgeBaseUseCase,
+  GetKnowledgeDocItemUseCase,
+  CreateKnowledgeDocItemUseCase,
+  UpdateKnowledgeDocItemUseCase,
+  PublishKnowledgeDocItemUseCase,
+  UpdateKnowledgeDocItemIndexUseCase,
   ListKnowledgeDocsUseCase,
   GetKnowledgeDocUseCase,
   CreateKnowledgeDocUseCase,
@@ -59,7 +69,7 @@ import {
 } from '../application/alert/alert.use-cases.js';
 import { UserRepository } from '../infrastructure/db/repositories/user.repository.js';
 import { RepoRepository } from '../infrastructure/db/repositories/repo.repository.js';
-import { KnowledgeDocRepository } from '../infrastructure/db/repositories/knowledge-doc.repository.js';
+import { KnowledgeRepository } from '../infrastructure/db/repositories/knowledge.repository.js';
 import { QaTemplateRepository } from '../infrastructure/db/repositories/qa-template.repository.js';
 import { AlertRuleRepository } from '../infrastructure/db/repositories/alert-rule.repository.js';
 import { ChatRepository } from '../infrastructure/db/repositories/chat.repository.js';
@@ -85,7 +95,7 @@ export function buildGraphQLContext(
 ): GraphQLContext {
   const userRepo = new UserRepository();
   const repoRepo = new RepoRepository();
-  const knowledgeRepo = new KnowledgeDocRepository();
+  const knowledgeRepo = new KnowledgeRepository();
   const templateRepo = new QaTemplateRepository();
   const alertRepo = new AlertRuleRepository();
   const chatRepo = new ChatRepository();
@@ -114,11 +124,21 @@ export function buildGraphQLContext(
     updateRepoMetadataUseCase: new UpdateRepoMetadataUseCase(repoRepo, core),
     updateRepoUseCase: new UpdateRepoUseCase(repoRepo),
     deleteRepoUseCase: new DeleteRepoUseCase(repoRepo),
+    listKnowledgeBasesUseCase: new ListKnowledgeBasesUseCase(knowledgeRepo),
+    getKnowledgeBaseUseCase: new GetKnowledgeBaseUseCase(knowledgeRepo),
+    createKnowledgeBaseUseCase: new CreateKnowledgeBaseUseCase(knowledgeRepo),
+    updateKnowledgeBaseUseCase: new UpdateKnowledgeBaseUseCase(knowledgeRepo),
+    deleteKnowledgeBaseUseCase: new DeleteKnowledgeBaseUseCase(knowledgeRepo),
+    getKnowledgeDocItemUseCase: new GetKnowledgeDocItemUseCase(knowledgeRepo),
+    createKnowledgeDocItemUseCase: new CreateKnowledgeDocItemUseCase(knowledgeRepo),
+    updateKnowledgeDocItemUseCase: new UpdateKnowledgeDocItemUseCase(knowledgeRepo),
+    publishKnowledgeDocItemUseCase: new PublishKnowledgeDocItemUseCase(knowledgeRepo),
+    updateKnowledgeDocItemIndexUseCase: new UpdateKnowledgeDocItemIndexUseCase(knowledgeRepo, core),
     listKnowledgeDocsUseCase: new ListKnowledgeDocsUseCase(knowledgeRepo),
     getKnowledgeDocUseCase: new GetKnowledgeDocUseCase(knowledgeRepo),
     createKnowledgeDocUseCase: new CreateKnowledgeDocUseCase(knowledgeRepo),
-    updateKnowledgeDocUseCase: new UpdateKnowledgeDocUseCase(knowledgeRepo, core),
-    publishKnowledgeDocUseCase: new PublishKnowledgeDocUseCase(knowledgeRepo, core),
+    updateKnowledgeDocUseCase: new UpdateKnowledgeDocUseCase(knowledgeRepo),
+    publishKnowledgeDocUseCase: new PublishKnowledgeDocUseCase(knowledgeRepo),
     generateKnowledgeDocContentUseCase: new GenerateKnowledgeDocContentUseCase(
       knowledgeRepo,
       repoRepo,

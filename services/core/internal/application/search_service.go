@@ -77,8 +77,10 @@ func (s *SearchService) Search(ctx context.Context, query string, repoIDs []stri
 	}
 
 	rows, err := s.db.DB().QueryContext(ctx, `
-		SELECT id, title, content FROM knowledge_docs
-		WHERE status = 'published' AND (title LIKE ? OR content LIKE ?)
+		SELECT i.id, i.title, i.content
+		FROM knowledge_doc_items i
+		WHERE i.status = 'published' AND i.indexed_in_search = true
+		  AND (i.title LIKE ? OR i.content LIKE ?)
 		LIMIT 5
 	`, "%"+q+"%", "%"+q+"%")
 	if err == nil {

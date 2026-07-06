@@ -1,14 +1,32 @@
 import { ApplicationError, NotFoundError } from '../../domain/errors.js';
-import {
-  KnowledgeDocRepository,
-  type CreateKnowledgeDocInput,
-  type UpdateKnowledgeDocInput,
-} from '../../infrastructure/db/repositories/knowledge-doc.repository.js';
+import type { KnowledgeRepository } from '../../infrastructure/db/repositories/knowledge.repository.js';
 import type { CoreHttpClient } from '../../infrastructure/clients/core-http.client.js';
 import type { AiWorkerDocClient } from '../../infrastructure/clients/ai-worker-doc.client.js';
 import type { RepoRepository } from '../../infrastructure/db/repositories/repo.repository.js';
-import type { KnowledgeDocModel } from '../../infrastructure/db/models/knowledge-doc.model.js';
+import type { KnowledgeBaseModel } from '../../infrastructure/db/models/knowledge-base.model.js';
+import type { KnowledgeDocItemModel } from '../../infrastructure/db/models/knowledge-doc-item.model.js';
+import type { DocType } from '../../infrastructure/db/models/knowledge-doc-item.model.js';
 
+export interface KnowledgeBaseSummary {
+  id: string;
+  title: string;
+  repoIds: string[];
+  itemCount: number;
+  items?: KnowledgeDocItemSummary[];
+}
+
+export interface KnowledgeDocItemSummary {
+  id: string;
+  knowledgeBaseId: string;
+  title: string;
+  status: string;
+  docType: string;
+  indexedInSearch: boolean;
+  content?: string;
+  repoIds?: string[];
+}
+
+/** @deprecated 兼容旧 API */
 export interface KnowledgeDocSummary {
   id: string;
   title: string;
@@ -18,14 +36,48 @@ export interface KnowledgeDocSummary {
   content?: string;
 }
 
-function toSummary(doc: KnowledgeDocModel, includeContent = false): KnowledgeDocSummary {
+function toItemSummary(
+  item: KnowledgeDocItemModel,
+  base?: KnowledgeBaseModel,
+  includeContent = false,
+): KnowledgeDocItemSummary {
   return {
-    id: doc.id,
-    title: doc.title,
-    status: doc.status,
-    docType: doc.docType,
-    repoIds: doc.repoIds,
-    ...(includeContent ? { content: doc.content } : {}),
+    id: item.id,
+    knowledgeBaseId: item.knowledgeBaseId,
+    title: item.title,
+    status: item.status,
+    docType: item.docType,
+    indexedInSearch: item.indexedInSearch,
+    ...(base ? { repoIds: base.repoIds } : {}),
+    ...(includeContent ? { content: item.content } : {}),
+  };
+}
+
+function toBaseSummary(base: KnowledgeBaseModel, includeItems = false): KnowledgeBaseSummary {
+  return {
+    id: base.id,
+    title: base.title,
+    repoIds: base.repoIds,
+    itemCount: base.items?.length ?? 0,
+    ...(includeItems
+      ? { items: (base.items ?? []).map((item) => toItemSummary(item, base)) }
+      : {}),
+  };
+}
+
+/** @deprecated */
+function toLegacyDocSummary(
+  item: KnowledgeDocItemModel,
+  base: KnowledgeBaseModel,
+  includeContent = false,
+): KnowledgeDocSummary {
+  return {
+    id: item.id,
+    title: item.title,
+    status: item.status,
+    docType: item.docType,
+    repoIds: base.repoIds,
+    ...(includeContent ? { content: item.content } : {}),
   };
 }
 
@@ -61,157 +113,317 @@ async function resolveRepoNames(repos: RepoRepository, repoIds: string[]): Promi
   return names;
 }
 
-async function syncPublishedKnowledgeDocIndex(
-  core: CoreHttpClient | undefined,
-  docId: string,
-): Promise<void> {
-  if (!core) {
-    return;
-  }
-  try {
-    await core.indexKnowledgeDoc(docId);
-  } catch (error) {
-    console.warn(
-      JSON.stringify({
-        level: 'warn',
-        msg: 'knowledge doc vector index failed',
-        docId,
-        error: error instanceof Error ? error.message : String(error),
-      }),
-    );
+export class ListKnowledgeBasesUseCase {
+  constructor(private readonly knowledge: KnowledgeRepository) {}
+
+  async execute(): Promise<KnowledgeBaseSummary[]> {
+    const rows = await this.knowledge.listBases();
+    return rows.map((b) => toBaseSummary(b, true));
   }
 }
 
-export class ListKnowledgeDocsUseCase {
-  constructor(private readonly docs: KnowledgeDocRepository) {}
+export class GetKnowledgeBaseUseCase {
+  constructor(private readonly knowledge: KnowledgeRepository) {}
 
-  async execute(): Promise<KnowledgeDocSummary[]> {
-    const rows = await this.docs.listAll();
-    return rows.map((d) => toSummary(d));
-  }
-}
-
-export class GetKnowledgeDocUseCase {
-  constructor(private readonly docs: KnowledgeDocRepository) {}
-
-  async execute(id: string): Promise<KnowledgeDocSummary> {
-    const doc = await this.docs.findById(id);
-    if (!doc) {
-      throw new NotFoundError('KnowledgeDoc', id);
+  async execute(id: string): Promise<KnowledgeBaseSummary> {
+    const base = await this.knowledge.findBaseById(id);
+    if (!base) {
+      throw new NotFoundError('KnowledgeBase', id);
     }
-    return toSummary(doc, true);
+    return toBaseSummary(base, true);
   }
 }
 
-export class CreateKnowledgeDocUseCase {
-  constructor(private readonly docs: KnowledgeDocRepository) {}
+export class CreateKnowledgeBaseUseCase {
+  constructor(private readonly knowledge: KnowledgeRepository) {}
 
-  async execute(input: CreateKnowledgeDocInput): Promise<KnowledgeDocSummary> {
+  async execute(input: { title: string; repoIds?: string[]; createdBy?: string }): Promise<KnowledgeBaseSummary> {
+    if (!input.title?.trim()) {
+      throw new ApplicationError('知识库标题不能为空', 'VALIDATION_ERROR');
+    }
+    const base = await this.knowledge.createBase(input);
+    return toBaseSummary(base, true);
+  }
+}
+
+export class UpdateKnowledgeBaseUseCase {
+  constructor(private readonly knowledge: KnowledgeRepository) {}
+
+  async execute(id: string, input: { title?: string; repoIds?: string[] }): Promise<KnowledgeBaseSummary> {
+    const base = await this.knowledge.findBaseById(id);
+    if (!base) {
+      throw new NotFoundError('KnowledgeBase', id);
+    }
+    if (input.title !== undefined && !input.title.trim()) {
+      throw new ApplicationError('知识库标题不能为空', 'VALIDATION_ERROR');
+    }
+    const updated = await this.knowledge.updateBase(id, input);
+    return toBaseSummary(updated, true);
+  }
+}
+
+export class DeleteKnowledgeBaseUseCase {
+  constructor(private readonly knowledge: KnowledgeRepository) {}
+
+  async execute(id: string): Promise<boolean> {
+    const base = await this.knowledge.findBaseById(id);
+    if (!base) {
+      throw new NotFoundError('KnowledgeBase', id);
+    }
+    await this.knowledge.deleteBase(id);
+    return true;
+  }
+}
+
+export class GetKnowledgeDocItemUseCase {
+  constructor(private readonly knowledge: KnowledgeRepository) {}
+
+  async execute(id: string): Promise<KnowledgeDocItemSummary> {
+    const pair = await this.knowledge.findItemWithBase(id);
+    if (!pair) {
+      throw new NotFoundError('KnowledgeDocItem', id);
+    }
+    return toItemSummary(pair.item, pair.base, true);
+  }
+}
+
+export class CreateKnowledgeDocItemUseCase {
+  constructor(private readonly knowledge: KnowledgeRepository) {}
+
+  async execute(input: {
+    knowledgeBaseId: string;
+    title: string;
+    docType: DocType;
+    content?: string;
+  }): Promise<KnowledgeDocItemSummary> {
     if (!input.title?.trim()) {
       throw new ApplicationError('文档标题不能为空', 'VALIDATION_ERROR');
     }
-    const doc = await this.docs.create(input);
-    return toSummary(doc);
+    const base = await this.knowledge.findBaseById(input.knowledgeBaseId);
+    if (!base) {
+      throw new NotFoundError('KnowledgeBase', input.knowledgeBaseId);
+    }
+    const item = await this.knowledge.createItem(input);
+    return toItemSummary(item, base, true);
   }
 }
 
-export class UpdateKnowledgeDocUseCase {
-  constructor(
-    private readonly docs: KnowledgeDocRepository,
-    private readonly core?: CoreHttpClient,
-  ) {}
+export class UpdateKnowledgeDocItemUseCase {
+  constructor(private readonly knowledge: KnowledgeRepository) {}
 
-  async execute(id: string, input: UpdateKnowledgeDocInput): Promise<KnowledgeDocSummary> {
-    const doc = await this.docs.findById(id);
-    if (!doc) {
-      throw new NotFoundError('KnowledgeDoc', id);
+  async execute(
+    id: string,
+    input: { title?: string; docType?: DocType; content?: string },
+  ): Promise<KnowledgeDocItemSummary> {
+    const pair = await this.knowledge.findItemWithBase(id);
+    if (!pair) {
+      throw new NotFoundError('KnowledgeDocItem', id);
     }
     if (input.title !== undefined && !input.title.trim()) {
       throw new ApplicationError('文档标题不能为空', 'VALIDATION_ERROR');
     }
-    const updated = await this.docs.update(id, {
-      ...(input.title !== undefined ? { title: input.title.trim() } : {}),
-      ...(input.content !== undefined ? { content: input.content } : {}),
-      ...(input.docType !== undefined ? { docType: input.docType } : {}),
-      ...(input.repoIds !== undefined ? { repoIds: input.repoIds } : {}),
-    });
-    if (updated.status === 'published') {
-      await syncPublishedKnowledgeDocIndex(this.core, id);
-    }
-    return toSummary(updated, true);
+    const updated = await this.knowledge.updateItem(id, input);
+    return toItemSummary(updated, pair.base, true);
   }
 }
 
-export class PublishKnowledgeDocUseCase {
+export class PublishKnowledgeDocItemUseCase {
+  constructor(private readonly knowledge: KnowledgeRepository) {}
+
+  async execute(id: string): Promise<KnowledgeDocItemSummary> {
+    const pair = await this.knowledge.findItemWithBase(id);
+    if (!pair) {
+      throw new NotFoundError('KnowledgeDocItem', id);
+    }
+    const published = await this.knowledge.publishItem(id);
+    return toItemSummary(published, pair.base, true);
+  }
+}
+
+export class UpdateKnowledgeDocItemIndexUseCase {
   constructor(
-    private readonly docs: KnowledgeDocRepository,
-    private readonly core?: CoreHttpClient,
+    private readonly knowledge: KnowledgeRepository,
+    private readonly core: CoreHttpClient,
   ) {}
 
-  async execute(id: string): Promise<KnowledgeDocSummary> {
-    const doc = await this.docs.findById(id);
-    if (!doc) {
-      throw new NotFoundError('KnowledgeDoc', id);
+  async execute(itemId: string, indexedInSearch: boolean): Promise<KnowledgeDocItemSummary> {
+    const pair = await this.knowledge.findItemWithBase(itemId);
+    if (!pair) {
+      throw new NotFoundError('KnowledgeDocItem', itemId);
     }
-    const published = await this.docs.publish(id);
-    await syncPublishedKnowledgeDocIndex(this.core, id);
-    return toSummary(published);
+    if (indexedInSearch && pair.item.status !== 'published') {
+      throw new ApplicationError('仅已发布文档可纳入检索库', 'VALIDATION_ERROR');
+    }
+    await this.knowledge.setItemIndexedInSearch(itemId, indexedInSearch);
+    if (indexedInSearch) {
+      await this.core.indexKnowledgeDoc(itemId);
+    } else {
+      await this.core.removeKnowledgeDoc(itemId);
+    }
+    const updated = await this.knowledge.findItemById(itemId);
+    return toItemSummary(updated!, pair.base, true);
   }
 }
 
 export class GenerateKnowledgeDocContentUseCase {
   constructor(
-    private readonly docs: KnowledgeDocRepository,
+    private readonly knowledge: KnowledgeRepository,
     private readonly repos: RepoRepository,
     private readonly core: CoreHttpClient,
     private readonly aiWorker: AiWorkerDocClient,
   ) {}
 
-  async execute(id: string): Promise<KnowledgeDocSummary> {
-    const doc = await this.docs.findById(id);
-    if (!doc) {
-      throw new NotFoundError('KnowledgeDoc', id);
+  async execute(itemId: string): Promise<KnowledgeDocItemSummary> {
+    const pair = await this.knowledge.findItemWithBase(itemId);
+    if (!pair) {
+      throw new NotFoundError('KnowledgeDocItem', itemId);
     }
-    if (!doc.repoIds?.length) {
-      throw new ApplicationError('请先关联至少一个 Git 仓库', 'VALIDATION_ERROR');
+    if (!pair.base.repoIds?.length) {
+      throw new ApplicationError('请先为知识库关联至少一个 Git 仓库', 'VALIDATION_ERROR');
     }
 
-    const repoNames = await resolveRepoNames(this.repos, doc.repoIds);
-    const context = await buildKnowledgeDocContext(this.core, doc.repoIds);
+    const repoNames = await resolveRepoNames(this.repos, pair.base.repoIds);
+    const context = await buildKnowledgeDocContext(this.core, pair.base.repoIds);
     const { content } = await this.aiWorker.generateDoc({
-      title: doc.title,
-      docType: doc.docType,
+      title: pair.item.title,
+      docType: pair.item.docType,
       repoNames,
       context,
     });
 
-    const updated = await this.docs.update(id, { content });
-    return toSummary(updated, true);
+    const updated = await this.knowledge.updateItem(itemId, { content });
+    return toItemSummary(updated, pair.base, true);
   }
 }
 
-/** @deprecated 请使用 createKnowledgeDoc + generateKnowledgeDocContent */
+/** @deprecated */
+export class ListKnowledgeDocsUseCase {
+  constructor(private readonly knowledge: KnowledgeRepository) {}
+
+  async execute(): Promise<KnowledgeDocSummary[]> {
+    const bases = await this.knowledge.listBases();
+    const docs: KnowledgeDocSummary[] = [];
+    for (const base of bases) {
+      for (const item of base.items ?? []) {
+        docs.push(toLegacyDocSummary(item, base));
+      }
+    }
+    return docs;
+  }
+}
+
+/** @deprecated */
+export class GetKnowledgeDocUseCase {
+  constructor(private readonly knowledge: KnowledgeRepository) {}
+
+  async execute(id: string): Promise<KnowledgeDocSummary> {
+    const pair = await this.knowledge.findItemWithBase(id);
+    if (!pair) {
+      throw new NotFoundError('KnowledgeDoc', id);
+    }
+    return toLegacyDocSummary(pair.item, pair.base, true);
+  }
+}
+
+/** @deprecated */
+export class CreateKnowledgeDocUseCase {
+  constructor(private readonly knowledge: KnowledgeRepository) {}
+
+  async execute(input: {
+    title: string;
+    docType: DocType;
+    content?: string;
+    repoIds?: string[];
+    createdBy?: string;
+  }): Promise<KnowledgeDocSummary> {
+    const base = await this.knowledge.createBase({
+      title: input.title,
+      repoIds: input.repoIds ?? [],
+      createdBy: input.createdBy,
+    });
+    const item = await this.knowledge.createItem({
+      knowledgeBaseId: base.id,
+      title: input.title,
+      docType: input.docType,
+      content: input.content,
+    });
+    return toLegacyDocSummary(item, base, true);
+  }
+}
+
+/** @deprecated */
+export class UpdateKnowledgeDocUseCase {
+  constructor(private readonly knowledge: KnowledgeRepository) {}
+
+  async execute(
+    id: string,
+    input: { title?: string; docType?: DocType; content?: string; repoIds?: string[] },
+  ): Promise<KnowledgeDocSummary> {
+    const pair = await this.knowledge.findItemWithBase(id);
+    if (!pair) {
+      throw new NotFoundError('KnowledgeDoc', id);
+    }
+    if (input.repoIds !== undefined) {
+      await this.knowledge.updateBase(pair.base.id, { repoIds: input.repoIds });
+    }
+    const updated = await this.knowledge.updateItem(id, {
+      ...(input.title !== undefined ? { title: input.title } : {}),
+      ...(input.docType !== undefined ? { docType: input.docType } : {}),
+      ...(input.content !== undefined ? { content: input.content } : {}),
+    });
+    const base = await this.knowledge.findBaseById(pair.base.id);
+    return toLegacyDocSummary(updated, base!, true);
+  }
+}
+
+/** @deprecated */
+export class PublishKnowledgeDocUseCase {
+  constructor(private readonly knowledge: KnowledgeRepository) {}
+
+  async execute(id: string): Promise<KnowledgeDocSummary> {
+    const pair = await this.knowledge.findItemWithBase(id);
+    if (!pair) {
+      throw new NotFoundError('KnowledgeDoc', id);
+    }
+    const published = await this.knowledge.publishItem(id);
+    return toLegacyDocSummary(published, pair.base, true);
+  }
+}
+
+/** @deprecated */
 export class GenerateTrainingDocUseCase {
   constructor(
-    private readonly docs: KnowledgeDocRepository,
+    private readonly knowledge: KnowledgeRepository,
     private readonly repos: RepoRepository,
     private readonly core: CoreHttpClient,
     private readonly aiWorker: AiWorkerDocClient,
   ) {}
 
   async execute(repoId: string, createdBy?: string): Promise<KnowledgeDocSummary> {
-    const doc = await this.docs.create({
+    const base = await this.knowledge.createBase({
       title: '培训文档草稿',
-      docType: 'training',
-      content: '',
       repoIds: [repoId],
       createdBy,
     });
-    return new GenerateKnowledgeDocContentUseCase(
-      this.docs,
+    const item = await this.knowledge.createItem({
+      knowledgeBaseId: base.id,
+      title: '培训文档草稿',
+      docType: 'training',
+      content: '',
+    });
+    const generated = await new GenerateKnowledgeDocContentUseCase(
+      this.knowledge,
       this.repos,
       this.core,
       this.aiWorker,
-    ).execute(doc.id);
+    ).execute(item.id);
+    return {
+      id: generated.id,
+      title: generated.title,
+      status: generated.status,
+      docType: generated.docType,
+      repoIds: generated.repoIds ?? [repoId],
+      content: generated.content,
+    };
   }
 }

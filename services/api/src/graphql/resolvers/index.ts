@@ -2,7 +2,7 @@ import { GraphQLScalarType } from 'graphql';
 import type { LoginUseCase } from '../../application/auth/login.js';
 import type { GetCurrentUserUseCase } from '../../application/auth/get-current-user.js';
 import type { ListReposUseCase, CreateRepoUseCase, TestRepoConnectionUseCase, UpdateRepoMetadataUseCase, UpdateRepoUseCase, DeleteRepoUseCase } from '../../application/repo/repo.use-cases.js';
-import type { ListKnowledgeDocsUseCase, GetKnowledgeDocUseCase, CreateKnowledgeDocUseCase, UpdateKnowledgeDocUseCase, PublishKnowledgeDocUseCase, GenerateKnowledgeDocContentUseCase, GenerateTrainingDocUseCase } from '../../application/knowledge/knowledge.use-cases.js';
+import type { ListKnowledgeBasesUseCase, GetKnowledgeBaseUseCase, CreateKnowledgeBaseUseCase, UpdateKnowledgeBaseUseCase, DeleteKnowledgeBaseUseCase, GetKnowledgeDocItemUseCase, CreateKnowledgeDocItemUseCase, UpdateKnowledgeDocItemUseCase, PublishKnowledgeDocItemUseCase, UpdateKnowledgeDocItemIndexUseCase, ListKnowledgeDocsUseCase, GetKnowledgeDocUseCase, CreateKnowledgeDocUseCase, UpdateKnowledgeDocUseCase, PublishKnowledgeDocUseCase, GenerateKnowledgeDocContentUseCase, GenerateTrainingDocUseCase } from '../../application/knowledge/knowledge.use-cases.js';
 import type {
   ListChatSessionsUseCase,
   CreateChatSessionUseCase,
@@ -54,6 +54,16 @@ export interface GraphQLContext {
   updateRepoMetadataUseCase: UpdateRepoMetadataUseCase;
   updateRepoUseCase: UpdateRepoUseCase;
   deleteRepoUseCase: DeleteRepoUseCase;
+  listKnowledgeBasesUseCase: ListKnowledgeBasesUseCase;
+  getKnowledgeBaseUseCase: GetKnowledgeBaseUseCase;
+  createKnowledgeBaseUseCase: CreateKnowledgeBaseUseCase;
+  updateKnowledgeBaseUseCase: UpdateKnowledgeBaseUseCase;
+  deleteKnowledgeBaseUseCase: DeleteKnowledgeBaseUseCase;
+  getKnowledgeDocItemUseCase: GetKnowledgeDocItemUseCase;
+  createKnowledgeDocItemUseCase: CreateKnowledgeDocItemUseCase;
+  updateKnowledgeDocItemUseCase: UpdateKnowledgeDocItemUseCase;
+  publishKnowledgeDocItemUseCase: PublishKnowledgeDocItemUseCase;
+  updateKnowledgeDocItemIndexUseCase: UpdateKnowledgeDocItemIndexUseCase;
   listKnowledgeDocsUseCase: ListKnowledgeDocsUseCase;
   getKnowledgeDocUseCase: GetKnowledgeDocUseCase;
   createKnowledgeDocUseCase: CreateKnowledgeDocUseCase;
@@ -148,6 +158,29 @@ export function createResolvers() {
         const repos = await ctx.listReposUseCase.execute();
         return repos.find((r) => r.id === args.id) ?? null;
       },
+      knowledgeBases: (_: unknown, __: unknown, ctx: GraphQLContext) =>
+        withHandler(() => {
+          requireAdmin(ctx);
+          return ctx.listKnowledgeBasesUseCase.execute();
+        }),
+      knowledgeBase: (_: unknown, args: { id: string }, ctx: GraphQLContext) =>
+        withHandler(async () => {
+          requireAdmin(ctx);
+          try {
+            return await ctx.getKnowledgeBaseUseCase.execute(args.id);
+          } catch {
+            return null;
+          }
+        }),
+      knowledgeDocItem: (_: unknown, args: { id: string }, ctx: GraphQLContext) =>
+        withHandler(async () => {
+          requireAdmin(ctx);
+          try {
+            return await ctx.getKnowledgeDocItemUseCase.execute(args.id);
+          } catch {
+            return null;
+          }
+        }),
       knowledgeDocs: (_: unknown, __: unknown, ctx: GraphQLContext) =>
         withHandler(() => {
           requireAuth(ctx);
@@ -280,6 +313,64 @@ export function createResolvers() {
         withHandler(() => {
           requireAdmin(ctx);
           return ctx.deleteRepoUseCase.execute(args.repoId);
+        }),
+      createKnowledgeBase: (
+        _: unknown,
+        args: { input: Parameters<CreateKnowledgeBaseUseCase['execute']>[0] },
+        ctx: GraphQLContext,
+      ) =>
+        withHandler(() => {
+          const auth = requireAdmin(ctx);
+          return ctx.createKnowledgeBaseUseCase.execute({
+            ...args.input,
+            createdBy: auth.userId,
+          });
+        }),
+      updateKnowledgeBase: (
+        _: unknown,
+        args: { id: string; input: Parameters<UpdateKnowledgeBaseUseCase['execute']>[1] },
+        ctx: GraphQLContext,
+      ) =>
+        withHandler(() => {
+          requireAdmin(ctx);
+          return ctx.updateKnowledgeBaseUseCase.execute(args.id, args.input);
+        }),
+      deleteKnowledgeBase: (_: unknown, args: { id: string }, ctx: GraphQLContext) =>
+        withHandler(() => {
+          requireAdmin(ctx);
+          return ctx.deleteKnowledgeBaseUseCase.execute(args.id);
+        }),
+      createKnowledgeDocItem: (
+        _: unknown,
+        args: { input: Parameters<CreateKnowledgeDocItemUseCase['execute']>[0] },
+        ctx: GraphQLContext,
+      ) =>
+        withHandler(() => {
+          requireAdmin(ctx);
+          return ctx.createKnowledgeDocItemUseCase.execute(args.input);
+        }),
+      updateKnowledgeDocItem: (
+        _: unknown,
+        args: { id: string; input: Parameters<UpdateKnowledgeDocItemUseCase['execute']>[1] },
+        ctx: GraphQLContext,
+      ) =>
+        withHandler(() => {
+          requireAdmin(ctx);
+          return ctx.updateKnowledgeDocItemUseCase.execute(args.id, args.input);
+        }),
+      publishKnowledgeDocItem: (_: unknown, args: { id: string }, ctx: GraphQLContext) =>
+        withHandler(() => {
+          requireAdmin(ctx);
+          return ctx.publishKnowledgeDocItemUseCase.execute(args.id);
+        }),
+      updateKnowledgeDocItemIndex: (
+        _: unknown,
+        args: { itemId: string; indexedInSearch: boolean },
+        ctx: GraphQLContext,
+      ) =>
+        withHandler(() => {
+          requireAdmin(ctx);
+          return ctx.updateKnowledgeDocItemIndexUseCase.execute(args.itemId, args.indexedInSearch);
         }),
       createKnowledgeDoc: (
         _: unknown,

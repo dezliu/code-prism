@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { StreamGenerateKnowledgeDocUseCase } from './knowledge-doc-stream.js';
-import type { KnowledgeDocRepository } from '../../infrastructure/db/repositories/knowledge-doc.repository.js';
+import type { KnowledgeRepository } from '../../infrastructure/db/repositories/knowledge.repository.js';
 import type { RepoRepository } from '../../infrastructure/db/repositories/repo.repository.js';
 import type { CoreHttpClient } from '../../infrastructure/clients/core-http.client.js';
 import type { AiWorkerStreamClient } from '../../infrastructure/clients/ai-worker.client.js';
@@ -8,15 +8,21 @@ import type { StreamCancelStore } from '../../infrastructure/clients/stream-canc
 
 describe('StreamGenerateKnowledgeDocUseCase', () => {
   it('should emit fetching, tokens, save content, and done', async () => {
-    const docs = {
-      findById: vi.fn().mockResolvedValue({
-        id: 'doc-1',
-        title: '测试',
-        docType: 'training',
-        repoIds: ['repo-1'],
+    const knowledge = {
+      findItemWithBase: vi.fn().mockResolvedValue({
+        item: {
+          id: 'item-1',
+          title: '测试',
+          docType: 'training',
+          knowledgeBaseId: 'base-1',
+        },
+        base: {
+          id: 'base-1',
+          repoIds: ['repo-1'],
+        },
       }),
-      update: vi.fn().mockResolvedValue({}),
-    } as unknown as KnowledgeDocRepository;
+      updateItem: vi.fn().mockResolvedValue({}),
+    } as unknown as KnowledgeRepository;
 
     const repos = {
       findById: vi.fn().mockResolvedValue({
@@ -31,7 +37,6 @@ describe('StreamGenerateKnowledgeDocUseCase', () => {
         repos: [],
         contextText: '## repo context',
       }),
-      search: vi.fn().mockResolvedValue([]),
     } as unknown as CoreHttpClient;
 
     async function* mockStream() {
@@ -50,9 +55,9 @@ describe('StreamGenerateKnowledgeDocUseCase', () => {
       requestCancel: vi.fn(),
     } as unknown as StreamCancelStore;
 
-    const useCase = new StreamGenerateKnowledgeDocUseCase(docs, repos, core, aiWorker, cancelStore);
+    const useCase = new StreamGenerateKnowledgeDocUseCase(knowledge, repos, core, aiWorker, cancelStore);
     const events = [];
-    for await (const event of useCase.execute({ docId: 'doc-1', streamId: 'stream-1' })) {
+    for await (const event of useCase.execute({ itemId: 'item-1', streamId: 'stream-1' })) {
       events.push(event);
     }
 
@@ -63,8 +68,8 @@ describe('StreamGenerateKnowledgeDocUseCase', () => {
     expect(events.some((e) => e.event === 'token')).toBe(true);
     expect(events.at(-1)).toMatchObject({
       event: 'done',
-      data: { docId: 'doc-1', content: '# Hello', interrupted: false },
+      data: { itemId: 'item-1', content: '# Hello', interrupted: false },
     });
-    expect(docs.update).toHaveBeenCalledWith('doc-1', { content: '# Hello' });
+    expect(knowledge.updateItem).toHaveBeenCalledWith('item-1', { content: '# Hello' });
   });
 });

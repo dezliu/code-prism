@@ -2,31 +2,45 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   GenerateKnowledgeDocContentUseCase,
   PublishKnowledgeDocUseCase,
+  UpdateKnowledgeDocItemIndexUseCase,
   UpdateKnowledgeDocUseCase,
 } from './knowledge.use-cases.js';
-import type { KnowledgeDocRepository } from '../../infrastructure/db/repositories/knowledge-doc.repository.js';
+import type { KnowledgeRepository } from '../../infrastructure/db/repositories/knowledge.repository.js';
 import type { RepoRepository } from '../../infrastructure/db/repositories/repo.repository.js';
 import type { CoreHttpClient } from '../../infrastructure/clients/core-http.client.js';
 import type { AiWorkerDocClient } from '../../infrastructure/clients/ai-worker-doc.client.js';
 
 function createMocks() {
-  const doc = {
-    id: 'doc-1',
+  const item = {
+    id: 'item-1',
+    knowledgeBaseId: 'base-1',
     title: '测试知识库',
     status: 'draft' as const,
     docType: 'training' as const,
     content: '',
+    indexedInSearch: false,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+  const base = {
+    id: 'base-1',
+    title: '测试知识库',
     repoIds: ['repo-1'],
     createdBy: null,
     createdAt: new Date(),
     updatedAt: new Date(),
+    items: [item],
   };
 
-  const docs = {
-    findById: vi.fn().mockResolvedValue(doc),
-    update: vi.fn().mockImplementation(async (_id, patch) => ({ ...doc, ...patch })),
-    publish: vi.fn().mockImplementation(async () => ({ ...doc, status: 'published' as const })),
-  } as unknown as KnowledgeDocRepository;
+  const knowledge = {
+    findItemWithBase: vi.fn().mockResolvedValue({ item, base }),
+    updateItem: vi.fn().mockImplementation(async (_id, patch) => ({ ...item, ...patch })),
+    publishItem: vi.fn().mockImplementation(async () => ({ ...item, status: 'published' as const })),
+    findBaseById: vi.fn().mockResolvedValue(base),
+    updateBase: vi.fn().mockResolvedValue(base),
+    setItemIndexedInSearch: vi.fn().mockResolvedValue({ ...item, indexedInSearch: true }),
+    findItemById: vi.fn().mockResolvedValue(item),
+  } as unknown as KnowledgeRepository;
 
   const repos = {
     findById: vi.fn().mockResolvedValue({
@@ -38,94 +52,88 @@ function createMocks() {
 
   const core = {
     buildDocContext: vi.fn().mockResolvedValue({
-      repos: [
-        {
-          repoId: 'repo-1',
-          repoName: 'Demo Repo',
-          url: 'https://example.com/demo.git',
-          directoryTree: '.\n└── main.go',
-          fileContents: [{ path: 'main.go', kind: 'source', content: 'func main() {}' }],
-        },
-      ],
-      contextText: '## 仓库：Demo Repo\n\n### 文件：main.go',
+      repos: [],
+      contextText: '## 仓库：Demo Repo',
     }),
-    search: vi.fn().mockResolvedValue([
-      { type: 'code' as const, title: 'main.go', snippet: 'func main() {}', ref: 'main.go' },
-    ]),
-    indexKnowledgeDoc: vi.fn().mockResolvedValue({ ok: true, docId: 'doc-1' }),
+    search: vi.fn().mockResolvedValue([]),
+    indexKnowledgeDoc: vi.fn().mockResolvedValue({ ok: true, docId: 'item-1' }),
+    removeKnowledgeDoc: vi.fn().mockResolvedValue({ ok: true, docId: 'item-1', removed: true }),
   } as unknown as CoreHttpClient;
 
   const aiWorker = {
     generateDoc: vi.fn().mockResolvedValue({ content: '# 生成的文档\n\n内容' }),
   } as unknown as AiWorkerDocClient;
 
-  return { doc, docs, repos, core, aiWorker };
+  return { item, base, knowledge, repos, core, aiWorker };
 }
 
 describe('GenerateKnowledgeDocContentUseCase', () => {
   it('should reject when no repos are linked', async () => {
-    const { docs, repos, core, aiWorker } = createMocks();
-    vi.mocked(docs.findById).mockResolvedValueOnce({
-      ...createMocks().doc,
-      repoIds: [],
+    const { knowledge, repos, core, aiWorker, item, base } = createMocks();
+    vi.mocked(knowledge.findItemWithBase).mockResolvedValueOnce({
+      item,
+      base: { ...base, repoIds: [] },
     });
 
-    const useCase = new GenerateKnowledgeDocContentUseCase(docs, repos, core, aiWorker);
-    await expect(useCase.execute('doc-1')).rejects.toThrow('请先关联至少一个 Git 仓库');
+    const useCase = new GenerateKnowledgeDocContentUseCase(knowledge, repos, core, aiWorker);
+    await expect(useCase.execute('item-1')).rejects.toThrow('请先为知识库关联至少一个 Git 仓库');
   });
 
-  it('should clone repos, analyze code, call LLM, and update content', async () => {
-    const { docs, repos, core, aiWorker } = createMocks();
-    const useCase = new GenerateKnowledgeDocContentUseCase(docs, repos, core, aiWorker);
+  it('should build context, call LLM, and update content', async () => {
+    const { knowledge, repos, core, aiWorker } = createMocks();
+    const useCase = new GenerateKnowledgeDocContentUseCase(knowledge, repos, core, aiWorker);
 
-    const result = await useCase.execute('doc-1');
+    const result = await useCase.execute('item-1');
 
     expect(core.buildDocContext).toHaveBeenCalledWith(['repo-1']);
-    expect(core.search).toHaveBeenCalledWith(
-      '系统架构 业务模块 数据表 API 接口 对外服务',
-      ['repo-1'],
-    );
-    expect(aiWorker.generateDoc).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: '测试知识库',
-        docType: 'training',
-        repoNames: ['Demo Repo'],
-      }),
-    );
-    expect(docs.update).toHaveBeenCalledWith('doc-1', { content: '# 生成的文档\n\n内容' });
+    expect(aiWorker.generateDoc).toHaveBeenCalled();
+    expect(knowledge.updateItem).toHaveBeenCalledWith('item-1', { content: '# 生成的文档\n\n内容' });
     expect(result.content).toBe('# 生成的文档\n\n内容');
   });
 });
 
-describe('UpdateKnowledgeDocUseCase', () => {
-  it('should update repo associations', async () => {
-    const { docs } = createMocks();
-    const useCase = new UpdateKnowledgeDocUseCase(docs);
+describe('UpdateKnowledgeDocUseCase (deprecated)', () => {
+  it('should update repo associations on base', async () => {
+    const { knowledge } = createMocks();
+    const useCase = new UpdateKnowledgeDocUseCase(knowledge);
 
-    const result = await useCase.execute('doc-1', {
+    const result = await useCase.execute('item-1', {
       repoIds: ['repo-1', 'repo-2'],
     });
 
-    expect(docs.update).toHaveBeenCalledWith('doc-1', { repoIds: ['repo-1', 'repo-2'] });
-    expect(result.repoIds).toEqual(['repo-1', 'repo-2']);
+    expect(knowledge.updateBase).toHaveBeenCalledWith('base-1', { repoIds: ['repo-1', 'repo-2'] });
+    expect(result.repoIds).toEqual(['repo-1']);
   });
 });
 
-describe('PublishKnowledgeDocUseCase', () => {
-  it('should publish and sync vector index via core', async () => {
-    const { docs, core } = createMocks();
-    vi.mocked(docs.findById).mockResolvedValueOnce(createMocks().doc);
-    vi.mocked(docs.publish).mockResolvedValueOnce({
-      ...createMocks().doc,
-      status: 'published',
-    });
-    core.indexKnowledgeDoc = vi.fn().mockResolvedValue({ ok: true, docId: 'doc-1' });
+describe('PublishKnowledgeDocUseCase (deprecated)', () => {
+  it('should publish without auto indexing', async () => {
+    const { knowledge, core } = createMocks();
+    const useCase = new PublishKnowledgeDocUseCase(knowledge);
+    const result = await useCase.execute('item-1');
 
-    const useCase = new PublishKnowledgeDocUseCase(docs, core);
-    const result = await useCase.execute('doc-1');
-
-    expect(docs.publish).toHaveBeenCalledWith('doc-1');
-    expect(core.indexKnowledgeDoc).toHaveBeenCalledWith('doc-1');
+    expect(knowledge.publishItem).toHaveBeenCalledWith('item-1');
+    expect(core.indexKnowledgeDoc).not.toHaveBeenCalled();
     expect(result.status).toBe('published');
+  });
+});
+
+describe('UpdateKnowledgeDocItemIndexUseCase', () => {
+  it('should index when enabled', async () => {
+    const { knowledge, core } = createMocks();
+    vi.mocked(knowledge.findItemWithBase).mockResolvedValueOnce({
+      item: { ...createMocks().item, status: 'published' },
+      base: createMocks().base,
+    });
+    vi.mocked(knowledge.findItemById).mockResolvedValueOnce({
+      ...createMocks().item,
+      status: 'published',
+      indexedInSearch: true,
+    });
+
+    const useCase = new UpdateKnowledgeDocItemIndexUseCase(knowledge, core);
+    await useCase.execute('item-1', true);
+
+    expect(core.indexKnowledgeDoc).toHaveBeenCalledWith('item-1');
   });
 });

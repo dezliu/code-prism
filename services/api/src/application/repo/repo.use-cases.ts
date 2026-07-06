@@ -23,10 +23,21 @@ export interface RepoSummary {
   languageSummary: Record<string, number> | null;
   lastCommitAt: string | null;
   lastCommitSummary: string | null;
+  syncStatus: string;
+  localCommitHash: string | null;
+  remoteCommitHash: string | null;
+  indexedCommitHash: string | null;
+  hasPendingCommit: boolean;
+  lastSyncedAt: string | null;
 }
 
 function toSummary(repo: RepoModel): RepoSummary {
   const meta = repo.metadata as RepoMetadataModel | undefined;
+  const hasPendingCommit = Boolean(
+    repo.indexedCommitHash
+    && repo.remoteCommitHash
+    && repo.remoteCommitHash !== repo.indexedCommitHash,
+  );
   return {
     id: repo.id,
     name: repo.name,
@@ -42,6 +53,12 @@ function toSummary(repo: RepoModel): RepoSummary {
     languageSummary: repo.languageSummary,
     lastCommitAt: repo.lastCommitAt?.toISOString() ?? null,
     lastCommitSummary: repo.lastCommitSummary,
+    syncStatus: repo.syncStatus ?? 'synced',
+    localCommitHash: repo.localCommitHash ?? null,
+    remoteCommitHash: repo.remoteCommitHash ?? null,
+    indexedCommitHash: repo.indexedCommitHash ?? null,
+    hasPendingCommit,
+    lastSyncedAt: repo.lastSyncedAt?.toISOString() ?? null,
   };
 }
 

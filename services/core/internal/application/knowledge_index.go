@@ -97,7 +97,10 @@ func (s *SearchService) IndexKnowledgeDoc(ctx context.Context, docID string) err
 	var title, content, status string
 	var repoIDsJSON []byte
 	err := s.db.DB().QueryRowContext(ctx, `
-		SELECT title, content, status, repo_ids FROM knowledge_docs WHERE id = ?
+		SELECT i.title, i.content, i.status, b.repo_ids
+		FROM knowledge_doc_items i
+		JOIN knowledge_bases b ON b.id = i.knowledge_base_id
+		WHERE i.id = ?
 	`, docID).Scan(&title, &content, &status, &repoIDsJSON)
 	if err != nil {
 		return err
@@ -133,4 +136,14 @@ func (s *SearchService) IndexKnowledgeDoc(ctx context.Context, docID string) err
 		return nil
 	}
 	return s.qdrant.UpsertPoints(ctx, points)
+}
+
+func (s *SearchService) RemoveKnowledgeDoc(ctx context.Context, docID string) error {
+	if docID == "" {
+		return fmt.Errorf("docId required")
+	}
+	if s.qdrant == nil {
+		return nil
+	}
+	return s.qdrant.DeleteByDocID(ctx, docID)
 }

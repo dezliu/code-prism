@@ -24,20 +24,18 @@ function phaseIndex(phase: DocGeneratePhase | undefined): number {
 
 export interface DocGenerateProgressModalProps {
   open: boolean;
-  docId: string | null;
+  itemId: string | null;
   title?: string;
   docType?: string;
-  repoIds?: string[];
   onClose: () => void;
   onComplete: (content: string) => void;
 }
 
 export function DocGenerateProgressModal({
   open,
-  docId,
+  itemId,
   title,
   docType,
-  repoIds,
   onClose,
   onComplete,
 }: DocGenerateProgressModalProps) {
@@ -68,13 +66,13 @@ export function DocGenerateProgressModal({
       return;
     }
 
-    if (!docId || startedRef.current) {
+    if (!itemId || startedRef.current) {
       return;
     }
 
     startedRef.current = true;
-    void generate({ docId, title, docType, repoIds });
-  }, [open, docId, title, docType, repoIds, generate, reset]);
+    void generate({ itemId, title, docType });
+  }, [open, itemId, title, docType, generate, reset]);
 
   const currentPhase = status?.phase;
   const activeStep = phaseIndex(currentPhase);

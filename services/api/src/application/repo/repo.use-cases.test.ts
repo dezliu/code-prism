@@ -31,6 +31,11 @@ function createMockRepoRepo(): RepoRepository {
         enabled: true,
         indexedInSearch: false,
         indexStatus: 'none',
+        syncStatus: 'synced',
+        localCommitHash: null,
+        remoteCommitHash: null,
+        indexedCommitHash: null,
+        lastSyncedAt: null,
         metadata: { repoId: id, displayName: 'payment-service', tags: [] },
       };
       store.set(id, repo);

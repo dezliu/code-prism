@@ -186,20 +186,21 @@ func (s *IndexService) runIndexPipeline(jobID, repoID string) {
 	var langSummary map[string]int
 	var lastCommitAt time.Time
 	var lastCommitSummary string
+	var headCommitHash string
 
 	if s.git != nil && s.indexer != nil {
-		clone, cloneErr := s.git.Clone(ctx, repo.URL, repo.DefaultBranch)
-		if cloneErr != nil {
-			s.failJob(ctx, jobID, repoID, cloneErr)
+		syncResult, syncErr := s.git.Sync(ctx, repoID, repo.URL, repo.DefaultBranch)
+		if syncErr != nil {
+			s.failJob(ctx, jobID, repoID, syncErr)
 			return
 		}
-		defer os.RemoveAll(clone.Path)
 
-		langSummary = clone.LanguageSummary
-		lastCommitAt = clone.LastCommitAt
-		lastCommitSummary = clone.LastCommitSummary
+		langSummary = syncResult.LanguageSummary
+		lastCommitAt = syncResult.LastCommitAt
+		lastCommitSummary = syncResult.LastCommitSummary
+		headCommitHash = syncResult.HeadCommitHash
 
-		outputs, idxErr := s.indexer.IndexDirectory(ctx, clone.Path)
+		outputs, idxErr := s.indexer.IndexDirectory(ctx, syncResult.Path)
 		if idxErr != nil {
 			s.failJob(ctx, jobID, repoID, idxErr)
 			return
@@ -208,7 +209,7 @@ func (s *IndexService) runIndexPipeline(jobID, repoID string) {
 
 		if s.qdrant != nil {
 			_ = s.qdrant.EnsureCollection(ctx)
-			points := buildQdrantPoints(outputs, repoID, clone.Path, s.qdrantDim)
+			points := buildQdrantPoints(outputs, repoID, syncResult.Path, s.qdrantDim)
 			if upsertErr := s.qdrant.UpsertPoints(ctx, points); upsertErr != nil {
 				log.Printf(`{"level":"warn","msg":"qdrant upsert failed","error":%q}`, upsertErr.Error())
 			}
@@ -272,6 +273,19 @@ func (s *IndexService) runIndexPipeline(jobID, repoID string) {
 	_, _ = s.db.DB().ExecContext(ctx, `
 		UPDATE repos SET index_status = 'indexed', updated_at = NOW() WHERE id = ?
 	`, repoID)
+
+	if headCommitHash != "" {
+		_, _ = s.db.DB().ExecContext(ctx, `
+			UPDATE repos SET
+				local_commit_hash = ?,
+				remote_commit_hash = ?,
+				indexed_commit_hash = ?,
+				sync_status = 'synced',
+				last_synced_at = NOW(),
+				updated_at = NOW()
+			WHERE id = ?
+		`, headCommitHash, headCommitHash, headCommitHash, repoID)
+	}
 
 	log.Printf(`{"level":"info","msg":"index completed","jobId":%q,"repoId":%q}`, jobID, repoID)
 }

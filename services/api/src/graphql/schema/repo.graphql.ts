@@ -14,6 +14,12 @@ export const repoTypeDefs = /* GraphQL */ `
     languageSummary: JSON
     lastCommitAt: String
     lastCommitSummary: String
+    syncStatus: String!
+    localCommitHash: String
+    remoteCommitHash: String
+    indexedCommitHash: String
+    hasPendingCommit: Boolean!
+    lastSyncedAt: String
   }
 
   input CreateRepoInput {

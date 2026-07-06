@@ -1,19 +1,29 @@
 'use client';
 
 import {
-  Button, Card, Form, Input, Modal, Select, Space, Table, Tag, message,
+  Button, Card, Drawer, Form, Input, Modal, Select, Space, Switch, Table, Tag, message,
 } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import { gql } from '../../lib/gql';
 import { DocGenerateProgressModal } from '../DocGenerateProgressModal';
+import { MarkdownEditor } from '../MarkdownEditor';
 
-interface KnowledgeDoc {
+interface KnowledgeBaseRow {
   id: string;
+  title: string;
+  repoIds: string[];
+  itemCount: number;
+}
+
+interface KnowledgeDocItem {
+  id: string;
+  knowledgeBaseId: string;
   title: string;
   status: string;
   docType: string;
-  repoIds: string[];
+  indexedInSearch: boolean;
   content?: string;
+  repoIds?: string[];
 }
 
 interface RepoOption {
@@ -35,21 +45,26 @@ const DOC_TYPE_LABEL: Record<string, string> = Object.fromEntries(
 );
 
 export function KnowledgePanel() {
-  const [docs, setDocs] = useState<KnowledgeDoc[]>([]);
+  const [bases, setBases] = useState<KnowledgeBaseRow[]>([]);
   const [repos, setRepos] = useState<RepoOption[]>([]);
   const [loading, setLoading] = useState(false);
-  const [createModalOpen, setCreateModalOpen] = useState(false);
-  const [editDoc, setEditDoc] = useState<KnowledgeDoc | null>(null);
+  const [activeBase, setActiveBase] = useState<KnowledgeBaseRow | null>(null);
+  const [baseItems, setBaseItems] = useState<KnowledgeDocItem[]>([]);
+  const [createBaseOpen, setCreateBaseOpen] = useState(false);
+  const [editBaseOpen, setEditBaseOpen] = useState(false);
+  const [createItemOpen, setCreateItemOpen] = useState(false);
+  const [editItem, setEditItem] = useState<KnowledgeDocItem | null>(null);
   const [generateModalOpen, setGenerateModalOpen] = useState(false);
   const [generateTarget, setGenerateTarget] = useState<{
-    docId: string;
+    itemId: string;
     title: string;
     docType: string;
-    repoIds: string[];
   } | null>(null);
   const [saving, setSaving] = useState(false);
-  const [createForm] = Form.useForm();
-  const [editForm] = Form.useForm();
+  const [createBaseForm] = Form.useForm();
+  const [editBaseForm] = Form.useForm();
+  const [createItemForm] = Form.useForm();
+  const [editItemForm] = Form.useForm();
 
   const repoNameMap = useMemo(
     () => new Map(repos.map((r) => [r.id, r.displayName || r.name])),
@@ -63,17 +78,17 @@ export function KnowledgePanel() {
       `);
       setRepos(data.repos);
     } catch {
-      // 列表页仍可展示，编辑时若仓库未加载会提示
+      // ignore
     }
   };
 
-  const loadDocs = async () => {
+  const loadBases = async () => {
     setLoading(true);
     try {
-      const data = await gql<{ knowledgeDocs: KnowledgeDoc[] }>(`
-        query { knowledgeDocs { id title status docType repoIds } }
+      const data = await gql<{ knowledgeBases: KnowledgeBaseRow[] }>(`
+        query { knowledgeBases { id title repoIds itemCount } }
       `);
-      setDocs(data.knowledgeDocs);
+      setBases(data.knowledgeBases);
     } catch (error) {
       message.error(error instanceof Error ? error.message : '加载失败');
     } finally {
@@ -81,82 +96,155 @@ export function KnowledgePanel() {
     }
   };
 
-  useEffect(() => {
-    loadRepos();
-    loadDocs();
-  }, []);
-
-  const openCreateModal = () => {
-    createForm.resetFields();
-    createForm.setFieldsValue({ docType: 'training' });
-    setCreateModalOpen(true);
+  const loadBaseDetail = async (baseId: string) => {
+    const data = await gql<{ knowledgeBase: { items: KnowledgeDocItem[] } | null }>(`
+      query($id: ID!) { knowledgeBase(id: $id) { items { id knowledgeBaseId title status docType indexedInSearch } } }
+    `, { id: baseId });
+    setBaseItems(data.knowledgeBase?.items ?? []);
   };
 
-  const onCreate = async (values: { title: string; docType: string; repoIds?: string[] }) => {
+  useEffect(() => {
+    loadRepos();
+    loadBases();
+  }, []);
+
+  const openBaseDetail = async (row: KnowledgeBaseRow) => {
+    setActiveBase(row);
+    try {
+      await loadBaseDetail(row.id);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '加载详情失败');
+    }
+  };
+
+  const onCreateBase = async (values: { title: string; repoIds?: string[] }) => {
     try {
       await gql(
-        `mutation($input: CreateKnowledgeDocInput!) { createKnowledgeDoc(input: $input) { id } }`,
-        {
-          input: {
-            title: values.title,
-            docType: values.docType,
-            content: '',
-            repoIds: values.repoIds ?? [],
-          },
-        },
+        `mutation($input: CreateKnowledgeBaseInput!) { createKnowledgeBase(input: $input) { id } }`,
+        { input: { title: values.title, repoIds: values.repoIds ?? [] } },
       );
       message.success('知识库已创建');
-      setCreateModalOpen(false);
-      createForm.resetFields();
-      await loadDocs();
+      setCreateBaseOpen(false);
+      createBaseForm.resetFields();
+      await loadBases();
     } catch (error) {
       message.error(error instanceof Error ? error.message : '创建失败');
     }
   };
 
-  const openEditModal = async (row: KnowledgeDoc) => {
+  const openEditBase = (row: KnowledgeBaseRow) => {
+    setEditBaseOpen(true);
+    editBaseForm.setFieldsValue({ title: row.title, repoIds: row.repoIds });
+    setActiveBase(row);
+  };
+
+  const onSaveBase = async () => {
+    if (!activeBase) return;
+    const values = await editBaseForm.validateFields();
     try {
-      const data = await gql<{ knowledgeDoc: KnowledgeDoc | null }>(`
-        query($id: ID!) { knowledgeDoc(id: $id) { id title status docType repoIds content } }
+      await gql(
+        `mutation($id: ID!, $input: UpdateKnowledgeBaseInput!) {
+          updateKnowledgeBase(id: $id, input: $input) { id }
+        }`,
+        { id: activeBase.id, input: { title: values.title, repoIds: values.repoIds ?? [] } },
+      );
+      message.success('知识库已更新');
+      setEditBaseOpen(false);
+      await loadBases();
+      if (activeBase) {
+        setActiveBase({ ...activeBase, title: values.title, repoIds: values.repoIds ?? [] });
+      }
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '保存失败');
+    }
+  };
+
+  const onDeleteBase = (row: KnowledgeBaseRow) => {
+    Modal.confirm({
+      title: '确认删除知识库？',
+      content: `将删除「${row.title}」及其全部文档条目，此操作不可恢复。`,
+      okType: 'danger',
+      onOk: async () => {
+        await gql(`mutation($id: ID!) { deleteKnowledgeBase(id: $id) }`, { id: row.id });
+        message.success('已删除');
+        if (activeBase?.id === row.id) {
+          setActiveBase(null);
+          setBaseItems([]);
+        }
+        await loadBases();
+      },
+    });
+  };
+
+  const onCreateItem = async (values: { title: string; docType: string }) => {
+    if (!activeBase) return;
+    try {
+      await gql(
+        `mutation($input: CreateKnowledgeDocItemInput!) { createKnowledgeDocItem(input: $input) { id } }`,
+        {
+          input: {
+            knowledgeBaseId: activeBase.id,
+            title: values.title,
+            docType: values.docType,
+            content: '',
+          },
+        },
+      );
+      message.success('文档条目已创建');
+      setCreateItemOpen(false);
+      createItemForm.resetFields();
+      await loadBaseDetail(activeBase.id);
+      await loadBases();
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '创建失败');
+    }
+  };
+
+  const openEditItem = async (row: KnowledgeDocItem) => {
+    try {
+      const data = await gql<{ knowledgeDocItem: KnowledgeDocItem | null }>(`
+        query($id: ID!) {
+          knowledgeDocItem(id: $id) { id knowledgeBaseId title status docType indexedInSearch content }
+        }
       `, { id: row.id });
-      if (!data.knowledgeDoc) {
+      if (!data.knowledgeDocItem) {
         message.error('文档不存在');
         return;
       }
-      setEditDoc(data.knowledgeDoc);
-      editForm.setFieldsValue({
-        title: data.knowledgeDoc.title,
-        docType: data.knowledgeDoc.docType,
-        repoIds: data.knowledgeDoc.repoIds,
-        content: data.knowledgeDoc.content ?? '',
+      setEditItem(data.knowledgeDocItem);
+      editItemForm.setFieldsValue({
+        title: data.knowledgeDocItem.title,
+        docType: data.knowledgeDocItem.docType,
+        content: data.knowledgeDocItem.content ?? '',
       });
     } catch (error) {
       message.error(error instanceof Error ? error.message : '加载详情失败');
     }
   };
 
-  const onSaveEdit = async () => {
-    if (!editDoc) return;
-    const values = await editForm.validateFields();
+  const onSaveItem = async () => {
+    if (!editItem) return;
+    const values = await editItemForm.validateFields();
     setSaving(true);
     try {
       await gql(
-        `mutation($id: ID!, $input: UpdateKnowledgeDocInput!) {
-          updateKnowledgeDoc(id: $id, input: $input) { id }
+        `mutation($id: ID!, $input: UpdateKnowledgeDocItemInput!) {
+          updateKnowledgeDocItem(id: $id, input: $input) { id }
         }`,
         {
-          id: editDoc.id,
+          id: editItem.id,
           input: {
             title: values.title,
             docType: values.docType,
-            repoIds: values.repoIds ?? [],
             content: values.content,
           },
         },
       );
       message.success('已保存');
-      setEditDoc(null);
-      await loadDocs();
+      setEditItem(null);
+      if (activeBase) {
+        await loadBaseDetail(activeBase.id);
+      }
     } catch (error) {
       message.error(error instanceof Error ? error.message : '保存失败');
     } finally {
@@ -164,57 +252,57 @@ export function KnowledgePanel() {
     }
   };
 
-  const onGenerateContent = async () => {
-    if (!editDoc) return;
-    const repoIds: string[] = editForm.getFieldValue('repoIds') ?? [];
-    if (!repoIds.length) {
-      message.warning('请先关联至少一个 Git 仓库');
-      return;
-    }
+  const onPublishItem = async (id: string) => {
     try {
-      await gql(
-        `mutation($id: ID!, $input: UpdateKnowledgeDocInput!) {
-          updateKnowledgeDoc(id: $id, input: $input) { id }
-        }`,
-        {
-          id: editDoc.id,
-          input: {
-            title: editForm.getFieldValue('title'),
-            docType: editForm.getFieldValue('docType'),
-            repoIds,
-          },
-        },
-      );
-      setGenerateTarget({
-        docId: editDoc.id,
-        title: editForm.getFieldValue('title'),
-        docType: editForm.getFieldValue('docType'),
-        repoIds,
-      });
-      setGenerateModalOpen(true);
-    } catch (error) {
-      message.error(error instanceof Error ? error.message : '保存关联仓库失败');
-    }
-  };
-
-  const onApplyGeneratedContent = (content: string) => {
-    editForm.setFieldValue('content', content);
-    setGenerateModalOpen(false);
-    setGenerateTarget(null);
-    message.success('已回填到文档内容，确认后可点击保存');
-  };
-
-  const onPublish = async (id: string) => {
-    try {
-      await gql(`mutation($id: ID!) { publishKnowledgeDoc(id: $id) { id status } }`, { id });
+      await gql(`mutation($id: ID!) { publishKnowledgeDocItem(id: $id) { id status } }`, { id });
       message.success('文档已发布');
-      if (editDoc?.id === id) {
-        setEditDoc(null);
+      if (editItem?.id === id) {
+        setEditItem(null);
       }
-      await loadDocs();
+      if (activeBase) {
+        await loadBaseDetail(activeBase.id);
+      }
     } catch (error) {
       message.error(error instanceof Error ? error.message : '发布失败');
     }
+  };
+
+  const toggleItemIndexed = async (itemId: string, indexedInSearch: boolean) => {
+    try {
+      await gql(
+        `mutation($itemId: ID!, $indexedInSearch: Boolean!) {
+          updateKnowledgeDocItemIndex(itemId: $itemId, indexedInSearch: $indexedInSearch) { id indexedInSearch }
+        }`,
+        { itemId, indexedInSearch },
+      );
+      message.success(indexedInSearch ? '已加入检索库' : '已移出检索库');
+      if (activeBase) {
+        await loadBaseDetail(activeBase.id);
+      }
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '更新失败');
+    }
+  };
+
+  const onGenerateContent = () => {
+    if (!editItem) return;
+    if (!activeBase?.repoIds?.length) {
+      message.warning('请先为知识库关联至少一个 Git 仓库');
+      return;
+    }
+    setGenerateTarget({
+      itemId: editItem.id,
+      title: editItemForm.getFieldValue('title'),
+      docType: editItemForm.getFieldValue('docType'),
+    });
+    setGenerateModalOpen(true);
+  };
+
+  const onApplyGeneratedContent = (content: string) => {
+    editItemForm.setFieldValue('content', content);
+    setGenerateModalOpen(false);
+    setGenerateTarget(null);
+    message.success('已回填到文档内容，确认后可点击保存');
   };
 
   return (
@@ -225,28 +313,22 @@ export function KnowledgePanel() {
           title="知识库列表"
           className="admin-panel-inner"
           extra={(
-            <Button type="primary" onClick={openCreateModal}>新增知识库</Button>
+            <Button type="primary" onClick={() => setCreateBaseOpen(true)}>新增知识库</Button>
           )}
         >
           <Table
             rowKey="id"
             loading={loading}
-            dataSource={docs}
+            dataSource={bases}
             columns={[
               {
                 title: '标题',
                 dataIndex: 'title',
                 render: (title: string, row) => (
-                  <Button type="link" style={{ padding: 0 }} onClick={() => openEditModal(row)}>
+                  <Button type="link" style={{ padding: 0 }} onClick={() => openBaseDetail(row)}>
                     {title}
                   </Button>
                 ),
-              },
-              {
-                title: '类型',
-                dataIndex: 'docType',
-                width: 120,
-                render: (v: string) => DOC_TYPE_LABEL[v] ?? v,
               },
               {
                 title: '关联仓库',
@@ -259,25 +341,15 @@ export function KnowledgePanel() {
                     : <span style={{ color: '#999' }}>未关联</span>
                 ),
               },
-              {
-                title: '状态',
-                dataIndex: 'status',
-                width: 100,
-                render: (v: string) => (
-                  <Tag color={v === 'published' ? 'green' : 'default'}>
-                    {v === 'published' ? '已发布' : '草稿'}
-                  </Tag>
-                ),
-              },
+              { title: '文档数', dataIndex: 'itemCount', width: 90 },
               {
                 title: '操作',
-                width: 160,
+                width: 200,
                 render: (_, row) => (
                   <Space size="small">
-                    <Button size="small" type="link" onClick={() => openEditModal(row)}>编辑</Button>
-                    {row.status !== 'published' && (
-                      <Button size="small" type="link" onClick={() => onPublish(row.id)}>发布</Button>
-                    )}
+                    <Button size="small" type="link" onClick={() => openBaseDetail(row)}>管理文档</Button>
+                    <Button size="small" type="link" onClick={() => openEditBase(row)}>编辑</Button>
+                    <Button size="small" type="link" danger onClick={() => onDeleteBase(row)}>删除</Button>
                   </Space>
                 ),
               },
@@ -286,26 +358,84 @@ export function KnowledgePanel() {
         </Card>
       </div>
 
+      <Drawer
+        title={activeBase ? `知识库：${activeBase.title}` : '知识库详情'}
+        width={880}
+        open={!!activeBase}
+        onClose={() => setActiveBase(null)}
+        extra={(
+          <Space>
+            <Button onClick={() => activeBase && openEditBase(activeBase)}>编辑知识库</Button>
+            <Button type="primary" onClick={() => setCreateItemOpen(true)}>新增文档条目</Button>
+          </Space>
+        )}
+      >
+        <Table
+          rowKey="id"
+          dataSource={baseItems}
+          pagination={false}
+          columns={[
+            { title: '标题', dataIndex: 'title' },
+            {
+              title: '类型',
+              dataIndex: 'docType',
+              width: 110,
+              render: (v: string) => DOC_TYPE_LABEL[v] ?? v,
+            },
+            {
+              title: '状态',
+              dataIndex: 'status',
+              width: 90,
+              render: (v: string) => (
+                <Tag color={v === 'published' ? 'green' : 'default'}>
+                  {v === 'published' ? '已发布' : '草稿'}
+                </Tag>
+              ),
+            },
+            {
+              title: '纳入检索库',
+              width: 120,
+              render: (_, row) => (
+                <Switch
+                  checked={row.indexedInSearch}
+                  disabled={row.status !== 'published'}
+                  onChange={(checked) => toggleItemIndexed(row.id, checked)}
+                />
+              ),
+            },
+            {
+              title: '操作',
+              width: 160,
+              render: (_, row) => (
+                <Space size="small">
+                  <Button size="small" type="link" onClick={() => openEditItem(row)}>编辑</Button>
+                  {row.status !== 'published' && (
+                    <Button size="small" type="link" onClick={() => onPublishItem(row.id)}>发布</Button>
+                  )}
+                </Space>
+              ),
+            },
+          ]}
+        />
+      </Drawer>
+
       <Modal
         title="新增知识库"
-        open={createModalOpen}
-        onCancel={() => setCreateModalOpen(false)}
-        onOk={() => createForm.submit()}
+        open={createBaseOpen}
+        onCancel={() => setCreateBaseOpen(false)}
+        onOk={() => createBaseForm.submit()}
         okText="创建"
         destroyOnClose
       >
-        <Form form={createForm} layout="vertical" onFinish={onCreate}>
+        <Form form={createBaseForm} layout="vertical" onFinish={onCreateBase}>
           <Form.Item name="title" label="标题" rules={[{ required: true, message: '请输入标题' }]}>
             <Input placeholder="例如：nl-hermes 知识库" />
-          </Form.Item>
-          <Form.Item name="docType" label="类型" rules={[{ required: true }]}>
-            <Select options={DOC_TYPE_OPTIONS} />
           </Form.Item>
           <Form.Item name="repoIds" label="关联 Git 仓库（可选，支持多选）">
             <Select
               mode="multiple"
               allowClear
-              placeholder="创建后可继续编辑关联"
+              placeholder="可在创建后继续编辑"
               options={repos.map((r) => ({ value: r.id, label: r.displayName || r.name }))}
             />
           </Form.Item>
@@ -314,54 +444,84 @@ export function KnowledgePanel() {
 
       <Modal
         title="编辑知识库"
-        open={!!editDoc}
-        onCancel={() => setEditDoc(null)}
-        width={720}
+        open={editBaseOpen}
+        onCancel={() => setEditBaseOpen(false)}
+        onOk={onSaveBase}
+        okText="保存"
+        destroyOnClose
+      >
+        <Form form={editBaseForm} layout="vertical">
+          <Form.Item name="title" label="标题" rules={[{ required: true, message: '请输入标题' }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="repoIds" label="关联 Git 仓库" extra="文档生成与代码上下文将使用这些仓库">
+            <Select
+              mode="multiple"
+              allowClear
+              options={repos.map((r) => ({ value: r.id, label: r.displayName || r.name }))}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="新增文档条目"
+        open={createItemOpen}
+        onCancel={() => setCreateItemOpen(false)}
+        onOk={() => createItemForm.submit()}
+        okText="创建"
+        destroyOnClose
+      >
+        <Form
+          form={createItemForm}
+          layout="vertical"
+          initialValues={{ docType: 'training' }}
+          onFinish={onCreateItem}
+        >
+          <Form.Item name="title" label="标题" rules={[{ required: true, message: '请输入标题' }]}>
+            <Input placeholder="例如：新员工培训手册" />
+          </Form.Item>
+          <Form.Item name="docType" label="类型" rules={[{ required: true }]}>
+            <Select options={DOC_TYPE_OPTIONS} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="编辑文档条目"
+        open={!!editItem}
+        onCancel={() => setEditItem(null)}
+        width={820}
         footer={(
           <Space>
-            <Button onClick={() => setEditDoc(null)}>取消</Button>
-            {editDoc?.status !== 'published' && (
-              <Button onClick={() => editDoc && onPublish(editDoc.id)}>发布</Button>
+            <Button onClick={() => setEditItem(null)}>取消</Button>
+            {editItem?.status !== 'published' && (
+              <Button onClick={() => editItem && onPublishItem(editItem.id)}>发布</Button>
             )}
-            <Button onClick={onGenerateContent}>
-              从代码生成文档
-            </Button>
-            <Button type="primary" loading={saving} onClick={onSaveEdit}>保存</Button>
+            <Button onClick={onGenerateContent}>从代码生成文档</Button>
+            <Button type="primary" loading={saving} onClick={onSaveItem}>保存</Button>
           </Space>
         )}
         destroyOnClose
       >
-        <Form form={editForm} layout="vertical">
+        <Form form={editItemForm} layout="vertical">
           <Form.Item name="title" label="标题" rules={[{ required: true, message: '请输入标题' }]}>
             <Input />
           </Form.Item>
           <Form.Item name="docType" label="类型" rules={[{ required: true }]}>
             <Select options={DOC_TYPE_OPTIONS} />
           </Form.Item>
-          <Form.Item
-            name="repoIds"
-            label="关联 Git 仓库"
-            extra="一个知识库可关联多个仓库（1:N）"
-          >
-            <Select
-              mode="multiple"
-              allowClear
-              placeholder="选择要关联的仓库"
-              options={repos.map((r) => ({ value: r.id, label: r.displayName || r.name }))}
-            />
-          </Form.Item>
           <Form.Item name="content" label="文档内容">
-            <Input.TextArea rows={14} placeholder="可手动编辑，或点击「从代码生成文档」调用 LLM 自动生成" />
+            <MarkdownEditor placeholder="可手动编辑 Markdown，或点击「从代码生成文档」" />
           </Form.Item>
         </Form>
       </Modal>
 
       <DocGenerateProgressModal
         open={generateModalOpen}
-        docId={generateTarget?.docId ?? null}
+        itemId={generateTarget?.itemId ?? null}
         title={generateTarget?.title}
         docType={generateTarget?.docType}
-        repoIds={generateTarget?.repoIds}
         onClose={() => {
           setGenerateModalOpen(false);
           setGenerateTarget(null);

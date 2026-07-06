@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"time"
 
 	qdrantnames "github.com/lingprism/core/internal/infrastructure/qdrant"
 )
@@ -23,7 +24,8 @@ type Config struct {
 	RedisURL        string
 	IndexerGRPCAddr string
 	IndexerBinary   string
-	GitWorkDir      string
+	GitWorkDir         string
+	RepoSyncInterval   time.Duration
 }
 
 func Load() (*Config, error) {
@@ -46,6 +48,9 @@ func Load() (*Config, error) {
 
 	embeddingProvider := getEnv("EMBEDDING_PROVIDER", qdrantnames.DefaultProvider)
 
+	repoSyncMinutes, _ := strconv.Atoi(getEnv("REPO_SYNC_INTERVAL_MINUTES", "5"))
+	repoSyncInterval := time.Duration(repoSyncMinutes) * time.Minute
+
 	return &Config{
 		LogLevel:         getEnv("LOG_LEVEL", "info"),
 		HTTPPort:         httpPort,
@@ -61,7 +66,8 @@ func Load() (*Config, error) {
 		RedisURL:         resolveRedisURL(),
 		IndexerGRPCAddr:  getEnv("INDEXER_GRPC_ADDR", "localhost:50052"),
 		IndexerBinary:    getEnv("INDEXER_BINARY", "lingprism-indexer"),
-		GitWorkDir:       getEnv("GIT_WORK_DIR", os.TempDir()+"/lingprism-repos"),
+		GitWorkDir:         getEnv("GIT_WORK_DIR", os.TempDir()+"/lingprism-repos"),
+		RepoSyncInterval:   repoSyncInterval,
 	}, nil
 }
 

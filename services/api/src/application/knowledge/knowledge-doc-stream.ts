@@ -1,19 +1,15 @@
-import { ApplicationError } from '../../domain/errors.js';
 import type { CoreHttpClient } from '../../infrastructure/clients/core-http.client.js';
 import type { AiWorkerStreamClient, SseEvent } from '../../infrastructure/clients/ai-worker.client.js';
 import type { StreamCancelStore } from '../../infrastructure/clients/stream-cancel.store.js';
-import type { KnowledgeDocRepository } from '../../infrastructure/db/repositories/knowledge-doc.repository.js';
+import type { KnowledgeRepository } from '../../infrastructure/db/repositories/knowledge.repository.js';
 import type { RepoRepository } from '../../infrastructure/db/repositories/repo.repository.js';
-import {
-  buildKnowledgeDocContext,
-} from './knowledge.use-cases.js';
+import { buildKnowledgeDocContext } from './knowledge.use-cases.js';
 
 export interface StreamGenerateKnowledgeDocInput {
-  docId: string;
+  itemId: string;
   streamId: string;
   title?: string;
   docType?: string;
-  repoIds?: string[];
 }
 
 async function resolveRepoNames(repos: RepoRepository, repoIds: string[]): Promise<string[]> {
@@ -30,7 +26,7 @@ async function resolveRepoNames(repos: RepoRepository, repoIds: string[]): Promi
 
 export class StreamGenerateKnowledgeDocUseCase {
   constructor(
-    private readonly docs: KnowledgeDocRepository,
+    private readonly knowledge: KnowledgeRepository,
     private readonly repos: RepoRepository,
     private readonly core: CoreHttpClient,
     private readonly aiWorker: AiWorkerStreamClient,
@@ -38,32 +34,31 @@ export class StreamGenerateKnowledgeDocUseCase {
   ) {}
 
   async *execute(input: StreamGenerateKnowledgeDocInput): AsyncGenerator<SseEvent, void, unknown> {
-    const doc = await this.docs.findById(input.docId);
-    if (!doc) {
+    const pair = await this.knowledge.findItemWithBase(input.itemId);
+    if (!pair) {
       yield {
         event: 'error',
-        data: { code: 'NOT_FOUND', message: `KnowledgeDoc ${input.docId} not found` },
+        data: { code: 'NOT_FOUND', message: `KnowledgeDocItem ${input.itemId} not found` },
       };
       return;
     }
 
-    const title = input.title?.trim() || doc.title;
-    const docType = input.docType || doc.docType;
-    const repoIds = input.repoIds ?? doc.repoIds;
+    const title = input.title?.trim() || pair.item.title;
+    const docType = input.docType || pair.item.docType;
+    const repoIds = pair.base.repoIds;
 
     if (!repoIds?.length) {
       yield {
         event: 'error',
-        data: { code: 'VALIDATION_ERROR', message: '请先关联至少一个 Git 仓库' },
+        data: { code: 'VALIDATION_ERROR', message: '请先为知识库关联至少一个 Git 仓库' },
       };
       return;
     }
 
-    if (input.title !== undefined || input.docType !== undefined || input.repoIds !== undefined) {
-      await this.docs.update(input.docId, {
+    if (input.title !== undefined || input.docType !== undefined) {
+      await this.knowledge.updateItem(input.itemId, {
         ...(input.title !== undefined ? { title } : {}),
-        ...(input.docType !== undefined ? { docType } : {}),
-        ...(input.repoIds !== undefined ? { repoIds } : {}),
+        ...(input.docType !== undefined ? { docType: docType as typeof pair.item.docType } : {}),
       });
     }
 
@@ -95,7 +90,7 @@ export class StreamGenerateKnowledgeDocUseCase {
         context,
       })) {
         if (await this.cancelStore.isCancelled(input.streamId)) {
-          yield { event: 'done', data: { docId: input.docId, content, interrupted: true } };
+          yield { event: 'done', data: { itemId: input.itemId, content, interrupted: true } };
           return;
         }
 
@@ -115,11 +110,11 @@ export class StreamGenerateKnowledgeDocUseCase {
 
         if (event.event === 'done') {
           const finalContent = String(event.data.content ?? content);
-          await this.docs.update(input.docId, { content: finalContent });
+          await this.knowledge.updateItem(input.itemId, { content: finalContent });
           yield {
             event: 'done',
             data: {
-              docId: input.docId,
+              itemId: input.itemId,
               content: finalContent,
               interrupted: Boolean(event.data.interrupted),
             },

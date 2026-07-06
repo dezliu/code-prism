@@ -13,7 +13,7 @@ import {
   RedisStreamCancelStore,
   type StreamCancelStore,
 } from '../clients/stream-cancel.store.js';
-import { KnowledgeDocRepository } from '../db/repositories/knowledge-doc.repository.js';
+import { KnowledgeRepository } from '../db/repositories/knowledge.repository.js';
 import { RepoRepository } from '../db/repositories/repo.repository.js';
 import { createCoreHttpClient } from '../clients/core-http.client.js';
 import { ApplicationError } from '../../domain/errors.js';
@@ -39,7 +39,7 @@ export function createKnowledgeDocRoutes(deps: KnowledgeDocRoutesDeps): Router {
   const cancelStore = deps.cancelStore ?? new RedisStreamCancelStore(deps.config);
   const core = createCoreHttpClient();
   const streamUseCase = new StreamGenerateKnowledgeDocUseCase(
-    new KnowledgeDocRepository(),
+    new KnowledgeRepository(),
     new RepoRepository(),
     core,
     deps.aiWorkerClient,
@@ -61,15 +61,16 @@ export function createKnowledgeDocRoutes(deps: KnowledgeDocRoutesDeps): Router {
         return;
       }
 
-      const { docId, title, docType, repoIds } = req.body as {
+      const { itemId, docId, title, docType } = req.body as {
+        itemId?: string;
         docId?: string;
         title?: string;
         docType?: string;
-        repoIds?: string[];
       };
 
-      if (!docId) {
-        res.status(400).json({ code: 'VALIDATION_ERROR', message: 'docId is required' });
+      const resolvedItemId = itemId ?? docId;
+      if (!resolvedItemId) {
+        res.status(400).json({ code: 'VALIDATION_ERROR', message: 'itemId is required' });
         return;
       }
 
@@ -84,11 +85,10 @@ export function createKnowledgeDocRoutes(deps: KnowledgeDocRoutesDeps): Router {
 
       try {
         for await (const event of streamUseCase.execute({
-          docId,
+          itemId: resolvedItemId,
           streamId,
           title,
           docType,
-          repoIds,
         })) {
           writeSseEvent(res, event);
           if (event.event === 'done' || event.event === 'error') {

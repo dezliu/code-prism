@@ -5,6 +5,7 @@ import { RepoMetadataModel } from './repo-metadata.model.js';
 export type AuthType = 'ssh' | 'https';
 export type ConnectionStatus = 'pending' | 'connected' | 'failed' | 'disabled';
 export type IndexStatus = 'none' | 'queued' | 'indexing' | 'indexed' | 'failed' | 'removed';
+export type SyncStatus = 'synced' | 'pending_update' | 'syncing' | 'failed';
 
 export class RepoModel extends BaseModel {
   static tableName = 'repos';
@@ -25,6 +26,11 @@ export class RepoModel extends BaseModel {
   enabled!: boolean;
   indexedInSearch!: boolean;
   indexStatus!: IndexStatus;
+  localCommitHash!: string | null;
+  remoteCommitHash!: string | null;
+  indexedCommitHash!: string | null;
+  syncStatus!: SyncStatus;
+  lastSyncedAt!: Date | null;
   createdAt!: Date;
   updatedAt!: Date;
 

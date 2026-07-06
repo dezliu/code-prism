@@ -94,11 +94,10 @@ func (s *IndexService) buildRepoDocContext(ctx context.Context, repo repoRecord,
 	if branch == "" {
 		branch = "main"
 	}
-	clone, err := s.git.Clone(ctx, repo.URL, branch)
+	clone, err := s.git.Sync(ctx, repo.ID, repo.URL, branch)
 	if err != nil {
-		return RepoDocContext{}, "", fmt.Errorf("clone repo %s: %w", repo.ID, err)
+		return RepoDocContext{}, "", fmt.Errorf("sync repo %s: %w", repo.ID, err)
 	}
-	defer os.RemoveAll(clone.Path)
 
 	tree := buildDirectoryTree(clone.Path, docMaxTreeDepth, docMaxTreeEntries)
 	files := collectDocFiles(clone.Path)

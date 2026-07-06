@@ -55,6 +55,7 @@ func main() {
 	var indexSvc *application.IndexService
 	var searchSvc *application.SearchService
 	var archSvc *application.ArchitectureService
+	var repoSyncSvc *application.RepoSyncService
 	if db != nil {
 		indexSvc = application.NewIndexService(db, application.IndexServiceDeps{
 			Git: gitClient, Indexer: indexerClient, Neo4j: neo4jClient,
@@ -62,6 +63,7 @@ func main() {
 		})
 		searchSvc = application.NewSearchService(db, qdrantStore, cfg.EmbeddingDim)
 		archSvc = application.NewArchitectureService(db)
+		repoSyncSvc = application.NewRepoSyncService(db, gitClient)
 	}
 
 	grpcServer, err := grpciface.Start(cfg.GRPCPort, pingSvc)
@@ -75,6 +77,10 @@ func main() {
 		internalHandler := httpiface.NewHandler(indexSvc, searchSvc, archSvc)
 		internalHandler.Register(mux)
 	}
+
+	syncCtx, syncCancel := context.WithCancel(context.Background())
+	defer syncCancel()
+	application.StartRepoSyncWorker(syncCtx, repoSyncSvc, cfg.RepoSyncInterval)
 
 	httpServer := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.HTTPPort),

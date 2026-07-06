@@ -20,6 +20,10 @@ interface RepoRow {
   techOwner: string | null;
   languageSummary: Record<string, number> | null;
   lastCommitSummary: string | null;
+  syncStatus: string;
+  hasPendingCommit: boolean;
+  remoteCommitHash: string | null;
+  indexedCommitHash: string | null;
 }
 
 export function ReposPanel() {
@@ -39,6 +43,7 @@ export function ReposPanel() {
           repos {
             id name url connectionStatus indexStatus indexedInSearch enabled
             displayName tags businessOwner techOwner languageSummary lastCommitSummary
+            syncStatus hasPendingCommit remoteCommitHash indexedCommitHash
           }
         }
       `);
@@ -232,6 +237,20 @@ export function ReposPanel() {
               },
               { title: '索引', dataIndex: 'indexStatus', width: 100 },
               {
+                title: '同步',
+                width: 120,
+                render: (_, row) => (
+                  <Space direction="vertical" size={0}>
+                    <Tag color={row.syncStatus === 'synced' ? 'green' : row.syncStatus === 'failed' ? 'red' : 'orange'}>
+                      {row.syncStatus}
+                    </Tag>
+                    {row.hasPendingCommit && (
+                      <Tag color="orange">有新 commit</Tag>
+                    )}
+                  </Space>
+                ),
+              },
+              {
                 title: '纳入检索库',
                 width: 110,
                 render: (_, row) => (
@@ -250,10 +269,18 @@ export function ReposPanel() {
                 width: 200,
                 fixed: 'right',
                 render: (_, row) => (
-                  <Space>
-                    <Button size="small" onClick={() => openMetaModal(row)}>元数据</Button>
-                    <Button size="small" onClick={() => retestConnection(row.id)}>重测</Button>
-                    <Button size="small" danger onClick={() => deleteRepo(row)}>删除</Button>
+                  <Space direction="vertical" size="small">
+                    <Space>
+                      <Button size="small" onClick={() => openMetaModal(row)}>元数据</Button>
+                      <Button size="small" onClick={() => retestConnection(row.id)}>重测</Button>
+                      <Button size="small" danger onClick={() => deleteRepo(row)}>删除</Button>
+                    </Space>
+                    {row.hasPendingCommit && (
+                      <span style={{ color: '#fa8c16', fontSize: 12 }}>
+                        建议重新索引
+                        {row.lastCommitSummary ? `：${row.lastCommitSummary}` : ''}
+                      </span>
+                    )}
                   </Space>
                 ),
               },
