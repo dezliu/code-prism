@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package indexer.v1;
+
+// IndexerService — core → indexer gRPC 契约占位（Batch 1 stub）
+service IndexerService {
+  rpc Ping(PingRequest) returns (PingResponse);
+}
+
+message PingRequest {}
+
+message PingResponse {
+  string message = 1;
+}

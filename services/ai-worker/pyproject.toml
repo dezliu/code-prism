@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "lingprism-ai-worker"
+version = "0.1.0"
+description = "LingPrism AI Worker — Celery + LangChain skeleton"
+requires-python = ">=3.11"
+dependencies = [
+  "celery[redis]>=5.4.0",
+  "redis>=5.2.0",
+  "pydantic>=2.10.0",
+  "python-dotenv>=1.0.1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["workers", "chains", "infrastructure"]

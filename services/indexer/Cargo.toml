@@ -1,0 +1,21 @@
+[package]
+name = "lingprism-indexer"
+version = "0.1.0"
+edition = "2021"
+description = "LingPrism code indexer — tree-sitter parsing pipeline"
+
+[[bin]]
+name = "lingprism-indexer"
+path = "src/main.rs"
+
+[dependencies]
+tree-sitter = "0.24.7"
+tree-sitter-rust = "0.23.2"
+tree-sitter-javascript = "0.23.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+streaming-iterator = "0.1.9"
+
+[dev-dependencies]
+tempfile = "3.14"
