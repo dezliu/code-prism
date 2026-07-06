@@ -25,7 +25,7 @@ function requireEnv(name: string, fallback?: string): string {
 }
 
 function loadCorsOrigins(): string[] {
-  return parseCorsOrigins(process.env.CORS_ORIGINS);
+  return parseCorsOrigins(process.env.CORS_ORIGINS, process.env.NODE_ENV ?? 'development');
 }
 
 export function loadConfig(): ApiConfig {

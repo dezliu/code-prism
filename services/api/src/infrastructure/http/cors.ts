@@ -27,11 +27,17 @@ export function expandOriginAliases(origins: string[]): string[] {
   return [...expanded];
 }
 
-export function parseCorsOrigins(raw: string | undefined): string[] {
+export function parseCorsOrigins(raw: string | undefined, nodeEnv = 'development'): string[] {
+  const fromEnv =
+    raw?.trim()
+      ? raw.split(',').map((origin) => origin.trim()).filter(Boolean)
+      : [];
+
   const base =
-    !raw || raw.trim() === ''
-      ? DEFAULT_DEV_ORIGINS
-      : raw.split(',').map((origin) => origin.trim()).filter(Boolean);
+    nodeEnv === 'production' && fromEnv.length > 0
+      ? fromEnv
+      : [...new Set([...DEFAULT_DEV_ORIGINS, ...fromEnv])];
+
   return expandOriginAliases(base);
 }
 
