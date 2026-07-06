@@ -6,21 +6,25 @@ import (
 	"strings"
 
 	"github.com/lingprism/core/internal/infrastructure/mysql"
+	qdrantclient "github.com/lingprism/core/internal/infrastructure/qdrant"
 )
 
 type SearchService struct {
-	db *mysql.Client
+	db       *mysql.Client
+	qdrant   *qdrantclient.Client
+	qdrantDim int
 }
 
-func NewSearchService(db *mysql.Client) *SearchService {
-	return &SearchService{db: db}
+func NewSearchService(db *mysql.Client, qdrant *qdrantclient.Client, qdrantDim int) *SearchService {
+	return &SearchService{db: db, qdrant: qdrant, qdrantDim: qdrantDim}
 }
 
 type SearchHit struct {
-	Type    string `json:"type"`
-	Title   string `json:"title"`
-	Snippet string `json:"snippet"`
-	Ref     string `json:"ref,omitempty"`
+	Type    string  `json:"type"`
+	Title   string  `json:"title"`
+	Snippet string  `json:"snippet"`
+	Ref     string  `json:"ref,omitempty"`
+	Score   float64 `json:"score,omitempty"`
 }
 
 type SearchResult struct {
@@ -34,6 +38,25 @@ func (s *SearchService) Search(ctx context.Context, query string, repoIDs []stri
 	}
 
 	hits := []SearchHit{}
+
+	if s.qdrant != nil {
+		vec := qdrantclient.HashEmbed(q, s.qdrantDim)
+		qdrantHits, err := s.qdrant.Search(ctx, vec, 8)
+		if err == nil {
+			for _, hit := range qdrantHits {
+				if len(repoIDs) > 0 && !contains(repoIDs, hit.Payload.RepoID) {
+					continue
+				}
+				hits = append(hits, SearchHit{
+					Type:    "code",
+					Title:   hit.Payload.Symbol,
+					Snippet: hit.Payload.Snippet,
+					Ref:     hit.Payload.FilePath,
+					Score:   hit.Score,
+				})
+			}
+		}
+	}
 
 	rows, err := s.db.DB().QueryContext(ctx, `
 		SELECT id, title, content FROM knowledge_docs
@@ -50,10 +73,7 @@ func (s *SearchService) Search(ctx context.Context, query string, repoIDs []stri
 					snippet = snippet[:120] + "…"
 				}
 				hits = append(hits, SearchHit{
-					Type:    "doc",
-					Title:   title,
-					Snippet: snippet,
-					Ref:     id,
+					Type: "doc", Title: title, Snippet: snippet, Ref: id,
 				})
 			}
 		}
@@ -79,10 +99,9 @@ func (s *SearchService) Search(ctx context.Context, query string, repoIDs []stri
 				var id, name string
 				if err := repoRows.Scan(&id, &name); err == nil {
 					hits = append(hits, SearchHit{
-						Type:    "repo",
-						Title:   name,
+						Type: "repo", Title: name,
 						Snippet: fmt.Sprintf("代码仓库 %s 中与「%s」相关的索引片段", name, q),
-						Ref:     id,
+						Ref: id,
 					})
 				}
 			}
@@ -91,11 +110,19 @@ func (s *SearchService) Search(ctx context.Context, query string, repoIDs []stri
 
 	if len(hits) == 0 {
 		hits = append(hits, SearchHit{
-			Type:    "code",
-			Title:   "代码检索结果",
+			Type: "code", Title: "代码检索结果",
 			Snippet: fmt.Sprintf("未找到精确匹配，建议缩小问题范围后重试。查询：%s", q),
 		})
 	}
 
 	return SearchResult{Hits: hits}, nil
+}
+
+func contains(list []string, target string) bool {
+	for _, item := range list {
+		if item == target {
+			return true
+		}
+	}
+	return false
 }

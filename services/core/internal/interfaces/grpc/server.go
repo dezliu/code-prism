@@ -7,35 +7,53 @@ import (
 
 	"github.com/lingprism/core/internal/application"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
-// PingServer gRPC Ping 服务占位 — proto 生成后替换为 codegen 实现（Batch 2+）
-type PingServer struct {
+const coreServiceName = "core.v1.CoreService"
+
+type coreServiceServer struct {
 	ping *application.PingService
 }
 
-func NewPingServer(ping *application.PingService) *PingServer {
-	return &PingServer{ping: ping}
+func (s *coreServiceServer) Ping(_ context.Context, _ *emptypb.Empty) (*wrapperspb.StringValue, error) {
+	return wrapperspb.String(s.ping.Ping()), nil
 }
 
-// Ping 实现 CoreService.Ping RPC（手动 stub，待 protoc 生成后对齐）
-func (s *PingServer) Ping(_ context.Context, _ *PingRequest) (*PingResponse, error) {
-	return &PingResponse{Message: s.ping.Ping()}, nil
+var coreServiceDesc = grpc.ServiceDesc{
+	ServiceName: coreServiceName,
+	HandlerType: (*coreServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Ping",
+			Handler:    corePingHandler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "core/v1/core.proto",
 }
 
-// PingRequest / PingResponse 与 api/proto/core/v1/core.proto 对齐的手写占位
-type PingRequest struct{}
-
-type PingResponse struct {
-	Message string `json:"message"`
+func corePingHandler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(*coreServiceServer).Ping(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/" + coreServiceName + "/Ping",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(*coreServiceServer).Ping(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
-// Register 注册 gRPC 服务占位 — 使用 unary interceptor 模拟 Ping
 func Register(server *grpc.Server, ping *application.PingService) {
-	_ = NewPingServer(ping)
-	// Batch 1: 无 codegen，通过 grpc reflection 或 HTTP /health 验收；
-	// gRPC listener 启动并监听端口，真实 RPC 在 protoc 生成后启用。
-	_ = server
+	server.RegisterService(&coreServiceDesc, &coreServiceServer{ping: ping})
 }
 
 func Start(port int, ping *application.PingService) (*grpc.Server, error) {

@@ -2,15 +2,11 @@ syntax = "proto3";
 
 package core.v1;
 
+import "google/protobuf/empty.proto";
+import "google/protobuf/wrappers.proto";
+
 option go_package = "github.com/lingprism/core/api/gen/core/v1;corev1";
 
-// CoreService — api → core 内部 gRPC 契约占位（Batch 1 stub）
 service CoreService {
-  rpc Ping(PingRequest) returns (PingResponse);
-}
-
-message PingRequest {}
-
-message PingResponse {
-  string message = 1;
+  rpc Ping(google.protobuf.Empty) returns (google.protobuf.StringValue);
 }

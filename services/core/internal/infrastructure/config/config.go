@@ -5,7 +5,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/lingprism/core/internal/infrastructure/qdrant"
+	qdrantnames "github.com/lingprism/core/internal/infrastructure/qdrant"
 )
 
 type Config struct {
@@ -22,6 +22,8 @@ type Config struct {
 	OpenSearchURL   string
 	RedisURL        string
 	IndexerGRPCAddr string
+	IndexerBinary   string
+	GitWorkDir      string
 }
 
 func Load() (*Config, error) {
@@ -42,7 +44,7 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("invalid ZHIPU_EMBEDDING_DIM: %w", err)
 	}
 
-	embeddingProvider := getEnv("EMBEDDING_PROVIDER", qdrant.DefaultProvider)
+	embeddingProvider := getEnv("EMBEDDING_PROVIDER", qdrantnames.DefaultProvider)
 
 	return &Config{
 		LogLevel:         getEnv("LOG_LEVEL", "info"),
@@ -58,6 +60,8 @@ func Load() (*Config, error) {
 		OpenSearchURL:    resolveOpenSearchURL(),
 		RedisURL:         resolveRedisURL(),
 		IndexerGRPCAddr:  getEnv("INDEXER_GRPC_ADDR", "localhost:50052"),
+		IndexerBinary:    getEnv("INDEXER_BINARY", "lingprism-indexer"),
+		GitWorkDir:       getEnv("GIT_WORK_DIR", os.TempDir()+"/lingprism-repos"),
 	}, nil
 }
 
@@ -72,5 +76,5 @@ func resolveQdrantCollection(embeddingProvider string, embeddingDim int) string 
 	if explicit := os.Getenv("QDRANT_COLLECTION"); explicit != "" {
 		return explicit
 	}
-	return qdrant.ResolveCollectionName(embeddingProvider, embeddingDim)
+	return qdrantnames.ResolveCollectionName(embeddingProvider, embeddingDim)
 }

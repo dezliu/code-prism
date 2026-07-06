@@ -12,7 +12,11 @@ import (
 
 	"github.com/lingprism/core/internal/application"
 	"github.com/lingprism/core/internal/infrastructure/config"
+	gitclient "github.com/lingprism/core/internal/infrastructure/git"
+	idxclient "github.com/lingprism/core/internal/infrastructure/indexer"
+	neo4jstore "github.com/lingprism/core/internal/infrastructure/neo4j"
 	"github.com/lingprism/core/internal/infrastructure/mysql"
+	qdrantclient "github.com/lingprism/core/internal/infrastructure/qdrant"
 	httpiface "github.com/lingprism/core/internal/interfaces/http"
 	grpciface "github.com/lingprism/core/internal/interfaces/grpc"
 )
@@ -36,12 +40,27 @@ func main() {
 		}
 	}()
 
+	gitClient := gitclient.NewClient(cfg.GitWorkDir)
+	indexerClient := idxclient.NewClient(cfg.IndexerBinary)
+	qdrantStore := qdrantclient.NewClient(cfg.QdrantURL, cfg.QdrantCollection, cfg.EmbeddingDim)
+
+	var neo4jClient *neo4jstore.Client
+	if cfg.Neo4jURI != "" {
+		neo4jClient, err = neo4jstore.NewClient(cfg.Neo4jURI, cfg.Neo4jUser, cfg.Neo4jPassword)
+		if err != nil {
+			log.Printf(`{"level":"warn","msg":"neo4j unavailable","error":%q}`, err.Error())
+		}
+	}
+
 	var indexSvc *application.IndexService
 	var searchSvc *application.SearchService
 	var archSvc *application.ArchitectureService
 	if db != nil {
-		indexSvc = application.NewIndexService(db)
-		searchSvc = application.NewSearchService(db)
+		indexSvc = application.NewIndexService(db, application.IndexServiceDeps{
+			Git: gitClient, Indexer: indexerClient, Neo4j: neo4jClient,
+			Qdrant: qdrantStore, QdrantDim: cfg.EmbeddingDim,
+		})
+		searchSvc = application.NewSearchService(db, qdrantStore, cfg.EmbeddingDim)
 		archSvc = application.NewArchitectureService(db)
 	}
 
@@ -72,10 +91,6 @@ func main() {
 
 	log.Printf(`{"level":"%s","msg":"core grpc server started","port":%d}`, cfg.LogLevel, cfg.GRPCPort)
 
-	if cfg.HTTPPort == 18080 {
-		log.Printf(`{"level":"warn","msg":"preferred http port unavailable, using fallback","port":%d}`, cfg.HTTPPort)
-	}
-
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
@@ -83,6 +98,9 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	if neo4jClient != nil {
+		_ = neo4jClient.Close(ctx)
+	}
 	grpcServer.GracefulStop()
 	if err := httpServer.Shutdown(ctx); err != nil {
 		log.Printf("http shutdown error: %v", err)

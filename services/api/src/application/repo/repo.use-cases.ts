@@ -139,3 +139,19 @@ export class UpdateRepoMetadataUseCase {
     return toSummary(updated!);
   }
 }
+
+export class UpdateRepoUseCase {
+  constructor(private readonly repos: RepoRepository) {}
+
+  async execute(
+    repoId: string,
+    input: import('../../infrastructure/db/repositories/repo.repository.js').UpdateRepoInput,
+  ): Promise<RepoSummary> {
+    const repo = await this.repos.findById(repoId);
+    if (!repo) {
+      throw new NotFoundError('Repo', repoId);
+    }
+    const updated = await this.repos.updateRepo(repoId, input);
+    return toSummary(updated);
+  }
+}

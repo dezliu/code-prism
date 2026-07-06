@@ -41,7 +41,9 @@ def test_tools_list_should_return_echo_tool(client: TestClient) -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert body["result"]["tools"][0]["name"] == "echo"
+    tool_names = [t["name"] for t in body["result"]["tools"]]
+    assert "echo" in tool_names
+    assert "search_code" in tool_names
 
 
 def test_tools_call_echo_should_return_message(client: TestClient) -> None:

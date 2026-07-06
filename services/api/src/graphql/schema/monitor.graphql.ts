@@ -34,4 +34,8 @@ export const monitorTypeDefs = /* GraphQL */ `
     healthScores: [HealthScoreSummary!]!
     archDrifts(status: String): [ArchDriftSummary!]!
   }
+
+  extend type Mutation {
+    resolveArchDrift(id: ID!, status: String!): ArchDriftSummary!
+  }
 `;

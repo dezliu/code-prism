@@ -1,7 +1,7 @@
 import { GraphQLScalarType } from 'graphql';
 import type { LoginUseCase } from '../../application/auth/login.js';
 import type { GetCurrentUserUseCase } from '../../application/auth/get-current-user.js';
-import type { ListReposUseCase, CreateRepoUseCase, TestRepoConnectionUseCase, UpdateRepoMetadataUseCase } from '../../application/repo/repo.use-cases.js';
+import type { ListReposUseCase, CreateRepoUseCase, TestRepoConnectionUseCase, UpdateRepoMetadataUseCase, UpdateRepoUseCase } from '../../application/repo/repo.use-cases.js';
 import type { ListKnowledgeDocsUseCase, CreateKnowledgeDocUseCase, PublishKnowledgeDocUseCase, GenerateTrainingDocUseCase } from '../../application/knowledge/knowledge.use-cases.js';
 import type {
   ListChatSessionsUseCase,
@@ -14,6 +14,7 @@ import type {
   ListIndexJobsUseCase,
   ListHealthScoresUseCase,
   ListArchDriftsUseCase,
+  ResolveArchDriftUseCase,
   GetOfficialArchitectureUseCase,
   ListOfficialArchitecturesUseCase,
 } from '../../application/monitor/monitor.use-cases.js';
@@ -35,6 +36,7 @@ export interface GraphQLContext {
   createRepoUseCase: CreateRepoUseCase;
   testRepoConnectionUseCase: TestRepoConnectionUseCase;
   updateRepoMetadataUseCase: UpdateRepoMetadataUseCase;
+  updateRepoUseCase: UpdateRepoUseCase;
   listKnowledgeDocsUseCase: ListKnowledgeDocsUseCase;
   createKnowledgeDocUseCase: CreateKnowledgeDocUseCase;
   publishKnowledgeDocUseCase: PublishKnowledgeDocUseCase;
@@ -47,6 +49,7 @@ export interface GraphQLContext {
   listIndexJobsUseCase: ListIndexJobsUseCase;
   listHealthScoresUseCase: ListHealthScoresUseCase;
   listArchDriftsUseCase: ListArchDriftsUseCase;
+  resolveArchDriftUseCase: ResolveArchDriftUseCase;
   getOfficialArchitectureUseCase: GetOfficialArchitectureUseCase;
   listOfficialArchitecturesUseCase: ListOfficialArchitecturesUseCase;
   getArchitectureForBrowseUseCase: GetArchitectureForBrowseUseCase;
@@ -185,6 +188,15 @@ export function createResolvers() {
           requireAdmin(ctx);
           return ctx.updateRepoMetadataUseCase.execute(args.repoId, args.input);
         }),
+      updateRepo: (
+        _: unknown,
+        args: { repoId: string; input: Parameters<UpdateRepoUseCase['execute']>[1] },
+        ctx: GraphQLContext,
+      ) =>
+        withHandler(() => {
+          requireAdmin(ctx);
+          return ctx.updateRepoUseCase.execute(args.repoId, args.input);
+        }),
       createKnowledgeDoc: (
         _: unknown,
         args: { input: Parameters<CreateKnowledgeDocUseCase['execute']>[0] },
@@ -225,6 +237,15 @@ export function createResolvers() {
         withHandler(() => {
           requireAdmin(ctx);
           return ctx.publishOfficialArchitectureUseCase.execute(args.repoId, args.versionNote);
+        }),
+      resolveArchDrift: (
+        _: unknown,
+        args: { id: string; status: string },
+        ctx: GraphQLContext,
+      ) =>
+        withHandler(() => {
+          requireAdmin(ctx);
+          return ctx.resolveArchDriftUseCase.execute(args.id, args.status);
         }),
     },
   };

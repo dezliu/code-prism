@@ -25,6 +25,9 @@ dev = [
   "pytest>=8.3.0",
   "httpx>=0.28.0",
 ]
+langfuse = [
+  "langfuse>=2.0.0",
+]
 
 [project.scripts]
 lingprism-smoke-llm = "scripts.smoke_llm:main"

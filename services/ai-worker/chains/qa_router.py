@@ -8,8 +8,11 @@ from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 from chains.context_anchor import ContextAnchor, extract_anchor_from_answer, resolve_query
+from chains.template_match import match_templates
 from infrastructure.clients.core import CoreSearchClient
 from infrastructure.llm.factory import PlaceholderChatModel, create_chat_model
+from infrastructure.langfuse_tracer import trace_llm_call
+from infrastructure.llm.config import resolve_llm_config
 
 
 def classify_intent(message: str) -> list[str]:
@@ -59,6 +62,9 @@ async def stream_qa_with_rag(
 
     yield "status", {"phase": "understanding", "intents": intents}
 
+    for hint in match_templates(resolved_message):
+        yield "template_hint", hint
+
     yield "status", {"phase": "retrieving"}
     repo_ids = [anchor.repo_id] if anchor and anchor.repo_id else None
     hits = await client.search(resolved_message, repo_ids=repo_ids)
@@ -94,6 +100,7 @@ async def stream_qa_with_rag(
     )
 
     model = create_chat_model("qa")
+    cfg = resolve_llm_config("qa")
     if isinstance(model, PlaceholderChatModel):
         fallback = (
             f"基于检索结果回答：{resolved_message}\n\n"
@@ -115,19 +122,20 @@ async def stream_qa_with_rag(
         return
 
     collected: list[str] = []
-    if hasattr(model, "astream"):
-        async for chunk in model.astream(prompt):
-            if is_cancelled and is_cancelled():
-                yield "done", {
-                    "messageId": str(uuid.uuid4()),
-                    "interrupted": True,
-                    "anchor": anchor.to_dict() if anchor else None,
-                }
-                return
-            text = _extract_text(chunk)
-            if text:
-                collected.append(text)
-                yield "token", {"text": text}
+    with trace_llm_call(name="qa_router", provider=cfg.provider, model=cfg.model, scene="qa"):
+        if hasattr(model, "astream"):
+            async for chunk in model.astream(prompt):
+                if is_cancelled and is_cancelled():
+                    yield "done", {
+                        "messageId": str(uuid.uuid4()),
+                        "interrupted": True,
+                        "anchor": anchor.to_dict() if anchor else None,
+                    }
+                    return
+                text = _extract_text(chunk)
+                if text:
+                    collected.append(text)
+                    yield "token", {"text": text}
 
     answer = "".join(collected)
     new_anchor = extract_anchor_from_answer(answer, anchor)

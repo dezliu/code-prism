@@ -20,6 +20,13 @@ export const repoTypeDefs = /* GraphQL */ `
     url: String!
     authType: String!
     defaultBranch: String
+    authToken: String
+  }
+
+  input UpdateRepoInput {
+    defaultBranch: String
+    authToken: String
+    enabled: Boolean
   }
 
   input UpdateRepoMetadataInput {
@@ -44,5 +51,6 @@ export const repoTypeDefs = /* GraphQL */ `
     createRepo(input: CreateRepoInput!): Repo!
     testRepoConnection(repoId: ID!): TestConnectionResult!
     updateRepoMetadata(repoId: ID!, input: UpdateRepoMetadataInput!): Repo!
+    updateRepo(repoId: ID!, input: UpdateRepoInput!): Repo!
   }
 `;

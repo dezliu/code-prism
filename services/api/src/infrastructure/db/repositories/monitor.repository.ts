@@ -41,4 +41,9 @@ export class MonitorRepository {
       .orderBy('created_at', 'desc')
       .first();
   }
+
+  async updateArchDriftStatus(id: string, status: string): Promise<ArchDriftModel> {
+    await ArchDriftModel.query().findById(id).patch({ status });
+    return ArchDriftModel.query().findById(id).throwIfNotFound();
+  }
 }

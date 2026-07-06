@@ -8,6 +8,7 @@ import {
   CreateRepoUseCase,
   TestRepoConnectionUseCase,
   UpdateRepoMetadataUseCase,
+  UpdateRepoUseCase,
 } from '../application/repo/repo.use-cases.js';
 import {
   ListKnowledgeDocsUseCase,
@@ -26,6 +27,7 @@ import {
   ListIndexJobsUseCase,
   ListHealthScoresUseCase,
   ListArchDriftsUseCase,
+  ResolveArchDriftUseCase,
   GetOfficialArchitectureUseCase,
   ListOfficialArchitecturesUseCase,
 } from '../application/monitor/monitor.use-cases.js';
@@ -87,6 +89,7 @@ export function buildGraphQLContext(
     createRepoUseCase: new CreateRepoUseCase(repoRepo, core),
     testRepoConnectionUseCase: new TestRepoConnectionUseCase(repoRepo, core),
     updateRepoMetadataUseCase: new UpdateRepoMetadataUseCase(repoRepo, core),
+    updateRepoUseCase: new UpdateRepoUseCase(repoRepo),
     listKnowledgeDocsUseCase: new ListKnowledgeDocsUseCase(knowledgeRepo),
     createKnowledgeDocUseCase: new CreateKnowledgeDocUseCase(knowledgeRepo),
     publishKnowledgeDocUseCase: new PublishKnowledgeDocUseCase(knowledgeRepo),
@@ -99,6 +102,7 @@ export function buildGraphQLContext(
     listIndexJobsUseCase: new ListIndexJobsUseCase(monitorRepo, repoRepo),
     listHealthScoresUseCase: new ListHealthScoresUseCase(monitorRepo, repoRepo),
     listArchDriftsUseCase: new ListArchDriftsUseCase(monitorRepo, repoRepo),
+    resolveArchDriftUseCase: new ResolveArchDriftUseCase(monitorRepo, repoRepo),
     getOfficialArchitectureUseCase: new GetOfficialArchitectureUseCase(monitorRepo, repoRepo),
     listOfficialArchitecturesUseCase: new ListOfficialArchitecturesUseCase(monitorRepo, repoRepo),
     getArchitectureForBrowseUseCase: new GetArchitectureForBrowseUseCase(monitorRepo, repoRepo),

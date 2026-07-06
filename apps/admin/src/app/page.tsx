@@ -23,6 +23,8 @@ const menuItems = [
 
 const MENU_ROUTES: Record<string, string> = {
   repos: '/repos',
+  knowledge: '/knowledge',
+  architecture: '/architecture',
 };
 
 export default function AdminHomePage() {

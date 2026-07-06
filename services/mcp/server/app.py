@@ -35,7 +35,8 @@ async def mcp_endpoint(request: Request) -> JSONResponse:
         )
 
     body = await request.json()
-    response = dispatch_jsonrpc(body)
+    trace_id = request.headers.get("X-Trace-Id")
+    response = await dispatch_jsonrpc(body, trace_id=trace_id)
     return JSONResponse(content=response)
 
 

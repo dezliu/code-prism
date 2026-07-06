@@ -14,7 +14,7 @@ celery_app = Celery(
     "lingprism_ai_worker",
     broker=broker_url,
     backend=result_backend,
-    include=["workers.ping"],
+    include=["workers.ping", "workers.index_embed", "workers.gen_training_doc"],
 )
 celery_app.conf.update(
     task_serializer="json",

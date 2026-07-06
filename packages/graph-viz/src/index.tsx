@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import * as d3 from 'd3';
 
 export interface GraphNode {
   id: string;
@@ -26,118 +27,123 @@ export interface ArchitectureGraphProps {
   selectedNodeId?: string | null;
 }
 
-/** 轻量 SVG 架构图 — Batch 5 P0-C */
+type SimNode = GraphNode & d3.SimulationNodeDatum;
+type SimLink = d3.SimulationLinkDatum<SimNode> & { label?: string };
+
+/** D3 force-directed 架构图 — P0-C */
 export function ArchitectureGraph({
   data,
   onNodeClick,
   selectedNodeId,
 }: ArchitectureGraphProps) {
+  const svgRef = useRef<SVGSVGElement>(null);
   const [scale, setScale] = useState(1);
 
-  const layout = useMemo(() => {
-    const cols = Math.max(2, Math.ceil(Math.sqrt(data.nodes.length)));
-    return data.nodes.map((node, index) => ({
-      node,
-      x: 80 + (index % cols) * 180,
-      y: 60 + Math.floor(index / cols) * 100,
-    }));
-  }, [data.nodes]);
+  const simData = useMemo(() => {
+    const nodes: SimNode[] = data.nodes.map((n) => ({ ...n }));
+    const nodeIds = new Set(nodes.map((n) => n.id));
+    const links: SimLink[] = data.edges
+      .filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target))
+      .map((e) => ({
+        source: e.source,
+        target: e.target,
+        label: e.label,
+      }));
+    return { nodes, links };
+  }, [data]);
 
-  const nodeMap = new Map(layout.map((item) => [item.node.id, item]));
+  useEffect(() => {
+    const svg = d3.select(svgRef.current);
+    if (!svgRef.current) return;
+    svg.selectAll('*').remove();
+
+    const width = 800;
+    const height = 480;
+    const g = svg.attr('viewBox', `0 0 ${width} ${height}`).append('g');
+
+    const simulation = d3
+      .forceSimulation(simData.nodes)
+      .force('link', d3.forceLink(simData.links).id((d) => (d as SimNode).id).distance(120))
+      .force('charge', d3.forceManyBody().strength(-280))
+      .force('center', d3.forceCenter(width / 2, height / 2));
+
+    g.append('defs').append('marker')
+      .attr('id', 'arrow-d3')
+      .attr('viewBox', '0 0 10 10')
+      .attr('refX', 20)
+      .attr('refY', 5)
+      .attr('markerWidth', 6)
+      .attr('markerHeight', 6)
+      .attr('orient', 'auto-start-reverse')
+      .append('path')
+      .attr('d', 'M 0 0 L 10 5 L 0 10 z')
+      .attr('fill', '#bfbfbf');
+
+    const link = g.append('g')
+      .selectAll('line')
+      .data(simData.links)
+      .join('line')
+      .attr('stroke', '#bfbfbf')
+      .attr('stroke-width', 1.5)
+      .attr('marker-end', 'url(#arrow-d3)');
+
+    const node = g.append('g')
+      .selectAll('g')
+      .data(simData.nodes)
+      .join('g')
+      .style('cursor', 'pointer')
+      .on('click', (_, d) => onNodeClick?.(d));
+
+    node.append('rect')
+      .attr('width', 120)
+      .attr('height', 40)
+      .attr('x', -60)
+      .attr('y', -20)
+      .attr('rx', 8)
+      .attr('fill', (d) => (d.type === 'database' ? '#fff7e6' : d.type === 'module' ? '#f6ffed' : '#e6f4ff'))
+      .attr('stroke', (d) => (selectedNodeId === d.id ? '#1677ff' : '#d9d9d9'))
+      .attr('stroke-width', (d) => (selectedNodeId === d.id ? 2 : 1));
+
+    node.append('text')
+      .attr('text-anchor', 'middle')
+      .attr('dy', 5)
+      .attr('font-size', 12)
+      .attr('fill', '#262626')
+      .text((d) => d.label);
+
+    simulation.on('tick', () => {
+      link
+        .attr('x1', (d) => (d.source as SimNode).x ?? 0)
+        .attr('y1', (d) => (d.source as SimNode).y ?? 0)
+        .attr('x2', (d) => (d.target as SimNode).x ?? 0)
+        .attr('y2', (d) => (d.target as SimNode).y ?? 0);
+      node.attr('transform', (d) => `translate(${d.x ?? 0},${d.y ?? 0})`);
+    });
+
+    return () => {
+      simulation.stop();
+    };
+  }, [simData, onNodeClick, selectedNodeId]);
 
   return (
     <div>
       <div style={{ marginBottom: 8, display: 'flex', gap: 8 }}>
-        <button type="button" onClick={() => setScale((s) => Math.min(s + 0.1, 2))}>
-          放大
-        </button>
-        <button type="button" onClick={() => setScale((s) => Math.max(s - 0.1, 0.5))}>
-          缩小
-        </button>
-        <button type="button" onClick={() => setScale(1)}>
-          适应画布
-        </button>
+        <button type="button" onClick={() => setScale((s) => Math.min(s + 0.1, 2))}>放大</button>
+        <button type="button" onClick={() => setScale((s) => Math.max(s - 0.1, 0.5))}>缩小</button>
+        <button type="button" onClick={() => setScale(1)}>重置</button>
       </div>
       <svg
-        viewBox="0 0 800 480"
+        ref={svgRef}
         style={{
           width: '100%',
           height: 420,
           border: '1px solid #e8e8e8',
           borderRadius: 8,
           background: '#fff',
+          transform: `scale(${scale})`,
+          transformOrigin: 'top left',
         }}
-      >
-        <g transform={`scale(${scale})`}>
-          {data.edges.map((edge) => {
-            const from = nodeMap.get(edge.source);
-            const to = nodeMap.get(edge.target);
-            if (!from || !to) return null;
-            return (
-              <g key={edge.id}>
-                <line
-                  x1={from.x}
-                  y1={from.y}
-                  x2={to.x}
-                  y2={to.y}
-                  stroke="#bfbfbf"
-                  strokeWidth={1.5}
-                  markerEnd="url(#arrow)"
-                />
-                {edge.label ? (
-                  <text
-                    x={(from.x + to.x) / 2}
-                    y={(from.y + to.y) / 2 - 6}
-                    fontSize={10}
-                    fill="#8c8c8c"
-                    textAnchor="middle"
-                  >
-                    {edge.label}
-                  </text>
-                ) : null}
-              </g>
-            );
-          })}
-          {layout.map(({ node, x, y }) => {
-            const selected = selectedNodeId === node.id;
-            const fill =
-              node.type === 'database' ? '#fff7e6' : node.type === 'module' ? '#f6ffed' : '#e6f4ff';
-            return (
-              <g
-                key={node.id}
-                transform={`translate(${x - 60}, ${y - 20})`}
-                onClick={() => onNodeClick?.(node)}
-                style={{ cursor: 'pointer' }}
-              >
-                <rect
-                  width={120}
-                  height={40}
-                  rx={8}
-                  fill={fill}
-                  stroke={selected ? '#1677ff' : '#d9d9d9'}
-                  strokeWidth={selected ? 2 : 1}
-                />
-                <text x={60} y={24} textAnchor="middle" fontSize={12} fill="#262626">
-                  {node.label}
-                </text>
-              </g>
-            );
-          })}
-          <defs>
-            <marker
-              id="arrow"
-              viewBox="0 0 10 10"
-              refX="8"
-              refY="5"
-              markerWidth={6}
-              markerHeight={6}
-              orient="auto-start-reverse"
-            >
-              <path d="M 0 0 L 10 5 L 0 10 z" fill="#bfbfbf" />
-            </marker>
-          </defs>
-        </g>
-      </svg>
+      />
     </div>
   );
 }

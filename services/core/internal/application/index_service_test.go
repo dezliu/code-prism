@@ -5,7 +5,7 @@ import (
 )
 
 func TestIndexService_TestConnection_InvalidURL(t *testing.T) {
-	svc := &IndexService{}
+	svc := NewIndexService(nil, IndexServiceDeps{})
 	result := svc.TestConnection(nil, TestConnectionInput{URL: "not-a-url"})
 	if result.OK {
 		t.Fatal("expected connection failure for invalid url")
@@ -13,7 +13,7 @@ func TestIndexService_TestConnection_InvalidURL(t *testing.T) {
 }
 
 func TestIndexService_TestConnection_ValidURL(t *testing.T) {
-	svc := &IndexService{}
+	svc := NewIndexService(nil, IndexServiceDeps{})
 	result := svc.TestConnection(nil, TestConnectionInput{
 		URL:           "https://github.com/org/payment-service.git",
 		AuthType:      "https",

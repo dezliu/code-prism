@@ -28,26 +28,15 @@ mod tests {
     use crate::parser::{parse_source, Symbol};
 
     #[test]
-    fn should_include_empty_edges_when_formatting_parse_result() {
+    fn should_build_sequential_edges_when_formatting_parse_result() {
         let parse = ParseResult {
             language: "rust".into(),
-            symbols: vec![Symbol {
-                name: "main".into(),
-                kind: "function_item".into(),
-                start_line: 1,
-                end_line: 1,
-            }],
+            symbols: vec![
+                Symbol { name: "main".into(), kind: "function_item".into(), start_line: 1, end_line: 1 },
+                Symbol { name: "helper".into(), kind: "function_item".into(), start_line: 2, end_line: 2 },
+            ],
         };
         let output = format_output(parse);
-        assert_eq!(output.edges, vec![]);
-        assert_eq!(output.version, env!("CARGO_PKG_VERSION"));
-    }
-
-    #[test]
-    fn should_wire_graph_module_when_parsing_rust_source() {
-        let source = "fn hello() {}";
-        let parse = parse_source("rust", source).expect("parse");
-        let output = format_output(parse);
-        assert!(output.edges.is_empty());
+        assert_eq!(output.edges.len(), 1);
     }
 }

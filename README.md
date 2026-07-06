@@ -2,6 +2,17 @@
 
 企业知识与代码智能平台 — pnpm monorepo + 多语言微服务。
 
+## 能力概览
+
+| 模块 | 能力 |
+|------|------|
+| **用户平台** | JWT 登录 · SSE 流式问答 · 模板推荐 · 历史会话 · 架构图浏览 |
+| **管理后台** | 代码源 CRUD/元数据 · 知识库 · 架构草稿生成/发布 |
+| **监控平台** | 健康度 · 架构漂移处理 · 索引任务看板 |
+| **索引流水线** | Git clone → Rust tree-sitter → Qdrant 向量 + Neo4j 图谱 |
+| **MCP 对外** | `search_code` / `search_knowledge` / `get_architecture` / `ask_question` |
+| **LLM** | 智谱/DeepSeek/千问/OpenAI 多厂商 factory（env 驱动） |
+
 ## 技术栈
 
 | 层级 | 技术 |
@@ -17,8 +28,9 @@
 
 - **Node.js** >= 20 · **pnpm** >= 9
 - **Python** >= 3.11（ai-worker / mcp）
-- **Go** >= 1.22（core，可选）
-- **Rust**（indexer，可选）
+- **Go** >= 1.22（core，索引/RAG 需启动）
+- **Rust**（indexer CLI；Docker 全栈已含 indexer 镜像）
+- **git**（core 索引流水线 clone 仓库）
 - **Docker** & Docker Compose
 
 ## 开发模式选择
@@ -83,7 +95,8 @@ AI Worker 首次需安装：`python3 -m venv .venv && source .venv/bin/activate 
 按需额外：
 
 ```bash
-cd services/core && go run ./cmd/server          # core（Batch 5 业务需）
+cd services/core && go run ./cmd/server          # 索引/RAG/架构草稿（推荐本地 dev 启动）
+cd services/indexer && cargo build --release     # 可选：本地编译 indexer；或确保 PATH 有 lingprism-indexer
 cd services/ai-worker && celery -A celery_app worker --loglevel=info
 cd services/mcp && pip install -e ".[dev]" && lingprism-mcp
 ```
@@ -92,9 +105,9 @@ cd services/mcp && pip install -e ".[dev]" && lingprism-mcp
 
 | 端 | 命令 | 地址 | 典型页面 |
 |----|------|------|----------|
-| 用户端 | `pnpm dev:user` | http://localhost:3000 | `/login` 问答首页 |
-| 管理端 | `pnpm dev:admin` | http://localhost:3001 | `/repos` 仓库管理 |
-| 监控端 | `pnpm dev:monitor` | http://localhost:3002 | `/health` `/index-status` |
+| 用户端 | `pnpm dev:user` | http://localhost:3000 | `/login` `/` 或 `/chat` 问答 · `/sessions` · `/architecture` |
+| 管理端 | `pnpm dev:admin` | http://localhost:3001 | `/repos` 代码源 · `/knowledge` 知识库 · `/architecture` 架构发布 |
+| 监控端 | `pnpm dev:monitor` | http://localhost:3002 | `/` 概览 · `/health` 健康/合规 · `/index-status` 索引 |
 
 验证：
 
@@ -125,10 +138,11 @@ curl http://localhost:4000/health
 
 ### 端到端验证
 
-1. 用户端：http://localhost:3000/login → `employee@lingprism.local` / `lingprism123` → 发送问题观察 SSE
-2. 管理端：http://localhost:3001/login → `admin@lingprism.local` / `lingprism123`
-3. 监控端：http://localhost:3002/login → 查看健康与索引状态
-4. LLM 需在根 `.env` 配置 `ZHIPU_API_KEY`；未配置时返回 `LLM_NOT_CONFIGURED`
+1. 用户端：http://localhost:3000/login → `employee@lingprism.local` / `lingprism123` → 发送问题观察 SSE（含模板推荐卡片）
+2. 管理端：http://localhost:3001/login → `admin@lingprism.local` / `lingprism123` → `/repos` 纳管仓库触发索引
+3. 监控端：http://localhost:3002/login → `/health` 查看健康度与漂移处理
+4. LLM 需在根 `.env` 配置 `ZHIPU_API_KEY`；未配置时返回 placeholder 文本
+5. 完整索引需 **core + git + indexer**；本地可 `export INDEXER_BINARY=$(pwd)/services/indexer/target/release/lingprism-indexer`
 
 ---
 
@@ -237,13 +251,15 @@ curl -s http://localhost:8080/mcp \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
 ```
 
+可用工具：`echo` · `search_code` · `search_knowledge` · `get_architecture` · `ask_question`
+
 ### Dockerfile 清单
 
 | 文件 | 服务 |
 |------|------|
 | `infra/docker/Dockerfile.api` | GraphQL + SSE 网关 |
 | `infra/docker/Dockerfile.core` | Go 核心业务 |
-| `infra/docker/Dockerfile.indexer` | Rust 索引器（CLI） |
+| `infra/docker/Dockerfile.indexer` | Rust 索引器（CLI，compose `--profile app` 已纳入） |
 | `infra/docker/Dockerfile.mcp` | MCP 2025 服务 |
 | `infra/docker/Dockerfile.ai-worker` | AI Worker HTTP + Celery |
 | `infra/docker/Dockerfile.frontend` | Next.js 三前端（build-arg `APP`） |
@@ -320,25 +336,25 @@ cd infra/docker && docker compose --profile app build core
 
 ```
 apps/
-  user/       # 用户前端 · 智能问答 /login
-  admin/      # 管理后台
-  monitor/    # 监控平台
+  user/       # 用户前端 · 问答 /chat · 会话 /sessions · 架构 /architecture
+  admin/      # 管理后台 · 代码源 /repos · 知识库 /knowledge · 架构 /architecture
+  monitor/    # 监控平台 · 概览 / · 健康 /health · 索引 /index-status
 packages/
   ui/         # 共享组件（AppShell、LoginForm）
   shared/     # 工具、RBAC 类型、auth token
   graphql/    # Apollo Client、useChatSSE、login API
-  graph-viz/  # 图谱可视化（Phase 1）
+  graph-viz/  # D3 force-directed 架构图谱
 services/
   api/        # GraphQL 网关 + JWT 认证 + SSE
-  core/       # Go 核心业务
-  indexer/    # Rust tree-sitter
-  ai-worker/  # Celery + LangChain + LLM factory
-  mcp/        # MCP 2025 对外服务
+  core/       # Go 核心业务（索引、RAG 检索、架构草稿、gRPC Ping）
+  indexer/    # Rust tree-sitter CLI
+  ai-worker/  # Celery + LangChain + LLM factory + Langfuse 埋点
+  mcp/        # MCP 2025 对外服务（四业务 tool + 审计）
 infra/
   docker/     # docker-compose + 各服务 Dockerfile
   nginx/      # Nginx 反向代理（三前端 + API + MCP）
   migrations/ # MySQL Knex 迁移与 seed
-docs/         # PRD、API 契约
+docs/         # PRD、架构计划、API 契约
 ```
 
 ## 关键 API
@@ -346,10 +362,12 @@ docs/         # PRD、API 契约
 | 类型 | 路径 | 说明 |
 |------|------|------|
 | GraphQL | `POST /graphql` | `login` / `me` / 业务查询 |
-| SSE | `POST /api/chat/stream` | 流式问答（需 JWT） |
+| SSE | `POST /api/chat/stream` | 流式问答（需 JWT）；事件含 `template_hint` |
 | SSE | `POST /api/chat/stop` | 中断生成 |
+| MCP | `POST /mcp` | JSON-RPC 2.0；需 `X-API-Key` + `MCP-Protocol-Version: 2025-03-26` |
 
-SSE 事件协议见 [docs/api-contracts/sse-chat-events.md](./docs/api-contracts/sse-chat-events.md)。
+SSE 事件协议见 [docs/api-contracts/sse-chat-events.md](./docs/api-contracts/sse-chat-events.md)。  
+系统架构见 [docs/plans/lingprism_系统架构_ca57583b.plan.md](./docs/plans/lingprism_系统架构_ca57583b.plan.md) §12 实现状态。
 
 ## 常见问题
 
@@ -431,10 +449,12 @@ cd infra/docker && docker compose --profile app build core
 |------|------|------|
 | Batch 0 | env 模板 · monorepo · docker 数据层 | ✅ |
 | Batch 1 | 五服务骨架（api/core/indexer/mcp/ai-worker） | ✅ |
-| Batch 2 | LLM 多厂商适配 · Qdrant collection 命名 | ✅ |
-| Batch 3 | 本地认证 · SSE 流式问答 · 三端 LoginForm | ✅ |
-| Batch 4 | Dockerfile · Nginx 全栈部署 | ✅ |
-| Batch 5 | Phase 1 P0 业务闭环 | ✅ |
+| Batch 2 | LLM 多厂商适配 · Qdrant collection 命名 · core 向量检索 | ✅ |
+| Batch 3 | 本地认证 · SSE 流式问答 · template_hint | ✅ |
+| Batch 4 | Dockerfile · Nginx 全栈部署 · indexer compose | ✅ |
+| Batch 5 | Phase 1 P0 业务闭环 + 遗漏项补全 | ✅ |
+
+**Phase 2+ 待办（摘要）：** OpenSearch 全文索引 · admin LLM 热配置 · GraphQL `@auth` directive · `/search` 代码检索 · SSO
 
 ## 测试
 

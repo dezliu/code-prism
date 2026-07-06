@@ -1,4 +1,4 @@
-import { NotFoundError } from '../../domain/errors.js';
+import { ApplicationError, NotFoundError } from '../../domain/errors.js';
 import { MonitorRepository } from '../../infrastructure/db/repositories/monitor.repository.js';
 import { RepoRepository } from '../../infrastructure/db/repositories/repo.repository.js';
 import type { GraphData } from '../../infrastructure/db/models/graph-snapshot.model.js';
@@ -159,5 +159,32 @@ export class ListOfficialArchitecturesUseCase {
       repoName: repoMap.get(s.repoId) ?? null,
       publishedAt: s.publishedAt?.toISOString() ?? null,
     }));
+  }
+}
+
+export class ResolveArchDriftUseCase {
+  constructor(
+    private readonly monitor: MonitorRepository,
+    private readonly repos: RepoRepository,
+  ) {}
+
+  async execute(id: string, status: string): Promise<ArchDriftSummary> {
+    const allowed = ['open', 'resolved', 'ignored'];
+    if (!allowed.includes(status)) {
+      throw new ApplicationError('无效的状态', 'VALIDATION_ERROR');
+    }
+    const drift = await this.monitor.updateArchDriftStatus(id, status);
+    const repo = await this.repos.findById(drift.repoId);
+    return {
+      id: drift.id,
+      repoId: drift.repoId,
+      description: drift.description,
+      driftType: drift.driftType,
+      sourceNode: drift.sourceNode,
+      targetNode: drift.targetNode,
+      status: drift.status,
+      repoName: repo?.name ?? null,
+      detectedAt: drift.detectedAt.toISOString(),
+    };
   }
 }

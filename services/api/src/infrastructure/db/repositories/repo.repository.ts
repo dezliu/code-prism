@@ -8,6 +8,13 @@ export interface CreateRepoInput {
   authConfig?: Record<string, unknown>;
   defaultBranch?: string;
   branchPolicy?: Record<string, unknown>;
+  authToken?: string;
+}
+
+export interface UpdateRepoInput {
+  defaultBranch?: string;
+  authToken?: string;
+  enabled?: boolean;
 }
 
 export interface UpdateRepoMetadataInput {
@@ -42,7 +49,9 @@ export class RepoRepository {
       url: input.url.trim(),
       name,
       authType: input.authType,
-      authConfig: input.authConfig ?? null,
+      authConfig: input.authToken
+        ? { token: input.authToken }
+        : input.authConfig ?? null,
       defaultBranch: input.defaultBranch ?? 'main',
       branchPolicy: input.branchPolicy ?? null,
       connectionStatus: 'pending',
@@ -113,5 +122,19 @@ export class RepoRepository {
       connectionStatus: enabled ? 'connected' : 'disabled',
       updatedAt: new Date(),
     });
+  }
+
+  async updateRepo(repoId: string, input: UpdateRepoInput): Promise<RepoModel> {
+    const patch: Partial<RepoModel> = { updatedAt: new Date() };
+    if (input.defaultBranch !== undefined) patch.defaultBranch = input.defaultBranch;
+    if (input.enabled !== undefined) {
+      patch.enabled = input.enabled;
+      patch.connectionStatus = input.enabled ? 'connected' : 'disabled';
+    }
+    if (input.authToken !== undefined) {
+      patch.authConfig = input.authToken ? { token: input.authToken } : null;
+    }
+    await RepoModel.query().findById(repoId).patch(patch);
+    return (await this.findById(repoId))!;
   }
 }

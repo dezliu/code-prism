@@ -1,4 +1,4 @@
-//! 图谱边构建占位 — Batch 5 索引流水线实现
+//! 图谱边构建 — 基于符号顺序生成模块内依赖边
 
 use serde::{Deserialize, Serialize};
 
@@ -9,8 +9,19 @@ pub struct GraphEdge {
     pub kind: String,
 }
 
-pub fn build_edges(_symbols: &[crate::parser::Symbol]) -> Vec<GraphEdge> {
-    vec![]
+pub fn build_edges(symbols: &[crate::parser::Symbol]) -> Vec<GraphEdge> {
+    if symbols.len() < 2 {
+        return vec![];
+    }
+    let mut edges = Vec::new();
+    for window in symbols.windows(2) {
+        edges.push(GraphEdge {
+            from: window[0].name.clone(),
+            to: window[1].name.clone(),
+            kind: "sequential".into(),
+        });
+    }
+    edges
 }
 
 #[cfg(test)]
@@ -19,13 +30,14 @@ mod tests {
     use crate::parser::Symbol;
 
     #[test]
-    fn should_return_empty_edges_for_scaffold_placeholder() {
-        let symbols = vec![Symbol {
-            name: "main".into(),
-            kind: "function_item".into(),
-            start_line: 1,
-            end_line: 3,
-        }];
-        assert!(build_edges(&symbols).is_empty());
+    fn should_build_sequential_edges_between_symbols() {
+        let symbols = vec![
+            Symbol { name: "main".into(), kind: "function_item".into(), start_line: 1, end_line: 3 },
+            Symbol { name: "helper".into(), kind: "function_item".into(), start_line: 5, end_line: 8 },
+        ];
+        let edges = build_edges(&symbols);
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0].from, "main");
+        assert_eq!(edges[0].to, "helper");
     }
 }

@@ -1,5 +1,6 @@
 """MCP 2025 Streamable HTTP JSON-RPC transport."""
 
+import inspect
 from typing import Any
 
 from server.handlers.initialize import handle_initialize
@@ -13,7 +14,7 @@ METHOD_HANDLERS = {
 }
 
 
-def dispatch_jsonrpc(body: dict[str, Any]) -> dict[str, Any]:
+async def dispatch_jsonrpc(body: dict[str, Any], trace_id: str | None = None) -> dict[str, Any]:
     request_id = body.get("id")
     method = body.get("method")
     params = body.get("params")
@@ -29,10 +30,17 @@ def dispatch_jsonrpc(body: dict[str, Any]) -> dict[str, Any]:
         return _error_response(request_id, -32601, f"Method not found: {method}")
 
     try:
-        result = handler(params)
+        if method == "tools/call":
+            result = await handle_tools_call(params, trace_id=trace_id)
+        elif inspect.iscoroutinefunction(handler):
+            result = await handler(params)
+        else:
+            result = handler(params)
         return {"jsonrpc": "2.0", "id": request_id, "result": result}
     except ValueError as exc:
         return _error_response(request_id, -32602, str(exc))
+    except Exception as exc:  # noqa: BLE001
+        return _error_response(request_id, -32000, str(exc))
 
 
 def _error_response(request_id: Any, code: int, message: str) -> dict[str, Any]:
