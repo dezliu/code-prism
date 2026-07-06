@@ -75,3 +75,22 @@ func (c *Client) UpsertRepoGraph(ctx context.Context, repoID string, graph map[s
 	})
 	return err
 }
+
+func (c *Client) DeleteRepoGraph(ctx context.Context, repoID string) error {
+	session := c.driver.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
+	defer session.Close(ctx)
+
+	_, err := session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
+		_, err := tx.Run(ctx, `
+			MATCH (n:GraphNode {repoId: $repoId}) DETACH DELETE n
+		`, map[string]any{"repoId": repoID})
+		if err != nil {
+			return nil, err
+		}
+		_, err = tx.Run(ctx, `
+			MATCH (r:Repo {id: $repoId}) DETACH DELETE r
+		`, map[string]any{"repoId": repoID})
+		return nil, err
+	})
+	return err
+}

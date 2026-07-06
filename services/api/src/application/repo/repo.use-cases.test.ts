@@ -98,6 +98,23 @@ describe('UpdateRepoMetadataUseCase', () => {
     expect(result.indexedInSearch).toBe(true);
     expect(enqueueSpy).toHaveBeenCalledWith(created.id);
   });
+
+  it('removes index when移出检索库', async () => {
+    const repos = createMockRepoRepo();
+    const create = new CreateRepoUseCase(repos, new CoreHttpClientStub());
+    const created = await create.execute({
+      url: 'https://github.com/org/payment-service.git',
+      authType: 'https',
+    });
+    const core = new CoreHttpClientStub();
+    const removeSpy = vi.spyOn(core, 'removeIndex');
+    const update = new UpdateRepoMetadataUseCase(repos, core);
+    const result = await update.execute(created.id, {
+      indexedInSearch: false,
+    });
+    expect(result.indexedInSearch).toBe(false);
+    expect(removeSpy).toHaveBeenCalledWith(created.id);
+  });
 });
 
 describe('DeleteRepoUseCase', () => {

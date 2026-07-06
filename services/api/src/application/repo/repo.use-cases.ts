@@ -134,6 +134,8 @@ export class UpdateRepoMetadataUseCase {
     await this.repos.updateMetadata(repoId, input);
     if (input.indexedInSearch) {
       await this.core.enqueueIndex(repoId);
+    } else if (input.indexedInSearch === false) {
+      await this.core.removeIndex(repoId);
     }
     const updated = await this.repos.findById(repoId);
     return toSummary(updated!);

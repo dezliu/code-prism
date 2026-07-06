@@ -15,6 +15,11 @@ export interface EnqueueIndexResult {
   status: string;
 }
 
+export interface RemoveIndexResult {
+  repoId: string;
+  removed: boolean;
+}
+
 export interface SearchHit {
   type: 'code' | 'doc' | 'repo';
   title: string;
@@ -45,6 +50,7 @@ export interface CoreHttpClient {
     defaultBranch: string;
   }): Promise<TestConnectionResult>;
   enqueueIndex(repoId: string): Promise<EnqueueIndexResult>;
+  removeIndex(repoId: string): Promise<RemoveIndexResult>;
   search(query: string, repoIds?: string[]): Promise<SearchHit[]>;
   buildDocContext(repoIds: string[]): Promise<DocContextResult>;
   generateArchDraft(repoId: string): Promise<{ snapshotId: string }>;
@@ -114,6 +120,13 @@ export class CoreHttpClientImpl implements CoreHttpClient {
     });
   }
 
+  async removeIndex(repoId: string): Promise<RemoveIndexResult> {
+    return this.request('/internal/index/remove', {
+      method: 'POST',
+      body: JSON.stringify({ repoId }),
+    });
+  }
+
   async search(query: string, repoIds?: string[]): Promise<SearchHit[]> {
     const params = new URLSearchParams({ q: query });
     if (repoIds?.length) {
@@ -149,6 +162,10 @@ export class CoreHttpClientStub implements CoreHttpClient {
 
   async enqueueIndex(repoId: string): Promise<EnqueueIndexResult> {
     return { jobId: `job_${repoId.slice(0, 8)}`, status: 'queued' };
+  }
+
+  async removeIndex(repoId: string): Promise<RemoveIndexResult> {
+    return { repoId, removed: true };
   }
 
   async search(query: string): Promise<SearchHit[]> {

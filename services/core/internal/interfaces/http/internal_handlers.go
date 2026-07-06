@@ -26,6 +26,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/internal/repos/test-connection", h.testConnection)
 	mux.HandleFunc("/internal/repos/doc-context", h.buildDocContext)
 	mux.HandleFunc("/internal/index/enqueue", h.enqueueIndex)
+	mux.HandleFunc("/internal/index/remove", h.removeIndex)
 	mux.HandleFunc("/internal/search", h.handleSearch)
 	mux.HandleFunc("/internal/architecture/", h.architecture)
 }
@@ -83,6 +84,26 @@ func (h *Handler) enqueueIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := h.indexSvc.EnqueueIndex(r.Context(), body.RepoID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) removeIndex(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		RepoID string `json:"repoId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.RepoID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "repoId required"})
+		return
+	}
+	result, err := h.indexSvc.RemoveFromIndex(r.Context(), body.RepoID)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return

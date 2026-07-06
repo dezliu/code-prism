@@ -123,6 +123,36 @@ func (s *IndexService) EnqueueIndex(ctx context.Context, repoID string) (Enqueue
 	return EnqueueIndexResult{JobID: jobID, Status: "queued"}, nil
 }
 
+type RemoveIndexResult struct {
+	RepoID  string `json:"repoId"`
+	Removed bool   `json:"removed"`
+}
+
+func (s *IndexService) RemoveFromIndex(ctx context.Context, repoID string) (RemoveIndexResult, error) {
+	if repoID == "" {
+		return RemoveIndexResult{}, fmt.Errorf("repoId required")
+	}
+
+	if s.qdrant != nil {
+		if err := s.qdrant.DeleteByRepoID(ctx, repoID); err != nil {
+			return RemoveIndexResult{}, fmt.Errorf("delete qdrant points: %w", err)
+		}
+	}
+
+	if s.neo4j != nil {
+		if err := s.neo4j.DeleteRepoGraph(ctx, repoID); err != nil {
+			log.Printf(`{"level":"warn","msg":"neo4j delete failed","repoId":%q,"error":%q}`, repoID, err.Error())
+		}
+	}
+
+	_, _ = s.db.DB().ExecContext(ctx, `
+		UPDATE repos SET index_status = 'removed', updated_at = NOW() WHERE id = ?
+	`, repoID)
+
+	log.Printf(`{"level":"info","msg":"index removed","repoId":%q}`, repoID)
+	return RemoveIndexResult{RepoID: repoID, Removed: true}, nil
+}
+
 type repoRecord struct {
 	ID            string
 	URL           string

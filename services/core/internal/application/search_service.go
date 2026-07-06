@@ -38,13 +38,18 @@ func (s *SearchService) Search(ctx context.Context, query string, repoIDs []stri
 	}
 
 	hits := []SearchHit{}
+	indexedRepoIDs := s.loadIndexedRepoIDs(ctx)
 
 	if s.qdrant != nil {
 		vec := qdrantclient.HashEmbed(q, s.qdrantDim)
 		qdrantHits, err := s.qdrant.Search(ctx, vec, 8)
 		if err == nil {
 			for _, hit := range qdrantHits {
-				if len(repoIDs) > 0 && !contains(repoIDs, hit.Payload.RepoID) {
+				if len(repoIDs) > 0 {
+					if !contains(repoIDs, hit.Payload.RepoID) {
+						continue
+					}
+				} else if len(indexedRepoIDs) > 0 && !contains(indexedRepoIDs, hit.Payload.RepoID) {
 					continue
 				}
 				hits = append(hits, SearchHit{
@@ -116,6 +121,27 @@ func (s *SearchService) Search(ctx context.Context, query string, repoIDs []stri
 	}
 
 	return SearchResult{Hits: hits}, nil
+}
+
+func (s *SearchService) loadIndexedRepoIDs(ctx context.Context) []string {
+	if s.db == nil {
+		return nil
+	}
+	rows, err := s.db.DB().QueryContext(ctx, `
+		SELECT id FROM repos WHERE indexed_in_search = true
+	`)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err == nil {
+			ids = append(ids, id)
+		}
+	}
+	return ids
 }
 
 func contains(list []string, target string) bool {

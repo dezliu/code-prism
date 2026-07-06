@@ -143,6 +143,39 @@ func (c *Client) Search(ctx context.Context, vector []float32, limit int) ([]Sea
 	return hits, nil
 }
 
+// DeleteByRepoID removes all vector points whose payload.repoId matches.
+func (c *Client) DeleteByRepoID(ctx context.Context, repoID string) error {
+	if repoID == "" {
+		return nil
+	}
+	body, _ := json.Marshal(map[string]interface{}{
+		"filter": map[string]interface{}{
+			"must": []map[string]interface{}{
+				{
+					"key":   "repoId",
+					"match": map[string]interface{}{"value": repoID},
+				},
+			},
+		},
+	})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		fmt.Sprintf("%s/collections/%s/points/delete?wait=true", c.baseURL, c.collection), bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		raw, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("delete points: %s", string(raw))
+	}
+	return nil
+}
+
 // HashEmbed produces a deterministic pseudo-embedding for indexing without external API.
 func HashEmbed(text string, dim int) []float32 {
 	vec := make([]float32, dim)

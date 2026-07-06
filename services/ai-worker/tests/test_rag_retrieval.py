@@ -143,8 +143,39 @@ def test_retrieve_context_uses_llm_expand_when_keywords_miss():
             client,
             "payment flow",
             expand_model=_ExpandModel(),
+            max_attempts=15,
         )
 
     hits, log = asyncio.run(run())
     assert len(hits) == 1
     assert any(entry["strategy"] == "llm_expand" for entry in log)
+
+
+def test_retrieve_context_respects_max_attempts():
+    class _AlwaysEmptyClient:
+        def __init__(self) -> None:
+            self.queries: list[str] = []
+
+        async def search(self, query: str, repo_ids=None):
+            self.queries.append(query)
+            return [
+                {
+                    "type": "code",
+                    "title": "代码检索结果",
+                    "snippet": "未找到精确匹配",
+                }
+            ]
+
+    client = _AlwaysEmptyClient()
+
+    async def run():
+        return await retrieve_context(
+            client,
+            "我想了解 nl-hermes的具体设计",
+            max_attempts=3,
+        )
+
+    hits, log = asyncio.run(run())
+    assert hits == []
+    assert len(log) == 3
+    assert len(client.queries) == 3

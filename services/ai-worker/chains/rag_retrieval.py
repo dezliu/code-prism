@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import os
 import re
 from typing import Any
+
+DEFAULT_MAX_SEARCH_ATTEMPTS = max(1, int(os.getenv("RAG_MAX_SEARCH_ATTEMPTS", "5")))
 
 from infrastructure.clients.core import CoreSearchClient
 from infrastructure.llm.factory import PlaceholderChatModel
@@ -126,6 +129,7 @@ async def retrieve_context(
     *,
     repo_ids: list[str] | None = None,
     expand_model: Any | None = None,
+    max_attempts: int | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
     """
     Multi-step retrieval:
@@ -135,10 +139,18 @@ async def retrieve_context(
 
     Returns (hits, retrieval_log).
     """
+    attempt_limit = max(1, max_attempts if max_attempts is not None else DEFAULT_MAX_SEARCH_ATTEMPTS)
     log: list[dict[str, str]] = []
     collected_groups: list[list[dict[str, Any]]] = []
+    attempts = 0
 
     async def _search(q: str, strategy: str) -> list[dict[str, Any]]:
+        nonlocal attempts
+        if attempts >= attempt_limit:
+            return []
+        if any(entry["query"] == q for entry in log):
+            return []
+        attempts += 1
         log.append({"strategy": strategy, "query": q})
         raw = await client.search(q, repo_ids=repo_ids)
         meaningful = [h for h in raw if is_meaningful_hit(h)]
@@ -151,8 +163,8 @@ async def retrieve_context(
         return merge_hits(collected_groups), log
 
     for variant in build_search_variants(query)[1:]:
-        if any(entry["query"] == variant for entry in log):
-            continue
+        if attempts >= attempt_limit:
+            break
         hits = await _search(variant, "keyword")
         if hits:
             break
@@ -160,11 +172,11 @@ async def retrieve_context(
     if collected_groups:
         return merge_hits(collected_groups), log
 
-    if expand_model is not None:
+    if expand_model is not None and attempts < attempt_limit:
         expanded = await expand_query_with_llm(query, expand_model)
         for variant in expanded:
-            if any(entry["query"] == variant for entry in log):
-                continue
+            if attempts >= attempt_limit:
+                break
             await _search(variant, "llm_expand")
             if collected_groups:
                 break
