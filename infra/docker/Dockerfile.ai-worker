@@ -12,6 +12,7 @@ RUN pip install --no-cache-dir hatchling
 COPY services/ai-worker/pyproject.toml ./
 COPY services/ai-worker/workers ./workers
 COPY services/ai-worker/chains ./chains
+COPY services/ai-worker/workflow ./workflow
 COPY services/ai-worker/infrastructure ./infrastructure
 COPY services/ai-worker/internal_http ./internal_http
 COPY services/ai-worker/scripts ./scripts
@@ -24,6 +25,7 @@ COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 COPY services/ai-worker/workers ./workers
 COPY services/ai-worker/chains ./chains
+COPY services/ai-worker/workflow ./workflow
 COPY services/ai-worker/infrastructure ./infrastructure
 COPY services/ai-worker/internal_http ./internal_http
 COPY services/ai-worker/scripts ./scripts

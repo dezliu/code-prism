@@ -259,7 +259,7 @@ services:
       QDRANT_URL: http://qdrant:6333
       ZHIPU_EMBEDDING_DIM: ${ZHIPU_EMBEDDING_DIM:-1024}
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8001/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health')"]
       interval: 15s
       timeout: 5s
       retries: 5
