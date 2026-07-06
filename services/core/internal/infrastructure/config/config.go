@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+
+	"github.com/lingprism/core/internal/infrastructure/qdrant"
 )
 
 type Config struct {
@@ -38,6 +40,8 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("invalid ZHIPU_EMBEDDING_DIM: %w", err)
 	}
 
+	embeddingProvider := getEnv("EMBEDDING_PROVIDER", qdrant.DefaultProvider)
+
 	return &Config{
 		LogLevel:         getEnv("LOG_LEVEL", "info"),
 		HTTPPort:         httpPort,
@@ -47,7 +51,7 @@ func Load() (*Config, error) {
 		Neo4jUser:        getEnv("NEO4J_USER", "neo4j"),
 		Neo4jPassword:    getEnv("NEO4J_PASSWORD", "lingprism"),
 		QdrantURL:        getEnv("QDRANT_URL", "http://localhost:6333"),
-		QdrantCollection: getEnv("QDRANT_COLLECTION", "lingprism_v1_zhipu_1024"),
+		QdrantCollection: resolveQdrantCollection(embeddingProvider, embeddingDim),
 		EmbeddingDim:     embeddingDim,
 		OpenSearchURL:    getEnv("OPENSEARCH_URL", "http://localhost:9200"),
 		RedisURL:         getEnv("REDIS_URL", "redis://localhost:6379/0"),
@@ -60,4 +64,11 @@ func getEnv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func resolveQdrantCollection(embeddingProvider string, embeddingDim int) string {
+	if explicit := os.Getenv("QDRANT_COLLECTION"); explicit != "" {
+		return explicit
+	}
+	return qdrant.ResolveCollectionName(embeddingProvider, embeddingDim)
 }
