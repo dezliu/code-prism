@@ -22,6 +22,22 @@ export interface SearchHit {
   ref?: string;
 }
 
+export interface RepoDocContext {
+  repoId: string;
+  repoName: string;
+  url: string;
+  lastCommitSummary?: string;
+  lastCommitAt?: string;
+  languageSummary?: Record<string, number>;
+  directoryTree: string;
+  fileContents: Array<{ path: string; kind: string; content: string }>;
+}
+
+export interface DocContextResult {
+  repos: RepoDocContext[];
+  contextText: string;
+}
+
 export interface CoreHttpClient {
   testConnection(input: {
     url: string;
@@ -30,6 +46,7 @@ export interface CoreHttpClient {
   }): Promise<TestConnectionResult>;
   enqueueIndex(repoId: string): Promise<EnqueueIndexResult>;
   search(query: string, repoIds?: string[]): Promise<SearchHit[]>;
+  buildDocContext(repoIds: string[]): Promise<DocContextResult>;
   generateArchDraft(repoId: string): Promise<{ snapshotId: string }>;
 }
 
@@ -43,7 +60,7 @@ export class CoreHttpClientImpl implements CoreHttpClient {
     this.activeBaseUrl = baseUrls[0]!;
   }
 
-  private async request<T>(path: string, init?: RequestInit): Promise<T> {
+  private async request<T>(path: string, init?: RequestInit, timeoutMs = 60_000): Promise<T> {
     const candidates = [
       this.activeBaseUrl,
       ...this.baseUrls.filter((url) => url !== this.activeBaseUrl),
@@ -59,6 +76,7 @@ export class CoreHttpClientImpl implements CoreHttpClient {
             'Content-Type': 'application/json',
             ...(init?.headers ?? {}),
           },
+          signal: init?.signal ?? AbortSignal.timeout(timeoutMs),
         });
         if (!res.ok) {
           const text = await res.text();
@@ -105,6 +123,13 @@ export class CoreHttpClientImpl implements CoreHttpClient {
     return data.hits;
   }
 
+  async buildDocContext(repoIds: string[]): Promise<DocContextResult> {
+    return this.request('/internal/repos/doc-context', {
+      method: 'POST',
+      body: JSON.stringify({ repoIds }),
+    }, 180_000);
+  }
+
   async generateArchDraft(repoId: string): Promise<{ snapshotId: string }> {
     return this.request(`/internal/architecture/${repoId}/generate-draft`, {
       method: 'POST',
@@ -135,6 +160,25 @@ export class CoreHttpClientStub implements CoreHttpClient {
         ref: 'doc-mock-1',
       },
     ];
+  }
+
+  async buildDocContext(repoIds: string[]): Promise<DocContextResult> {
+    return {
+      repos: repoIds.map((repoId) => ({
+        repoId,
+        repoName: `Mock Repo ${repoId.slice(0, 8)}`,
+        url: `https://example.com/${repoId}.git`,
+        directoryTree: '.\n├── src/\n└── README.md',
+        fileContents: [
+          {
+            path: 'README.md',
+            kind: 'readme',
+            content: '# Mock Project\n\n示例业务系统，用于本地开发。',
+          },
+        ],
+      })),
+      contextText: repoIds.map((id) => `## 仓库 Mock ${id}\n\n示例上下文`).join('\n\n'),
+    };
   }
 
   async generateArchDraft(repoId: string): Promise<{ snapshotId: string }> {

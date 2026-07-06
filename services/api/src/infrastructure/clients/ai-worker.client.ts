@@ -25,6 +25,15 @@ export interface SseEvent {
 
 export interface AiWorkerStreamClient {
   streamChat(request: ChatStreamRequest): AsyncGenerator<SseEvent, void, unknown>;
+  streamGenerateDoc(request: DocStreamRequest): AsyncGenerator<SseEvent, void, unknown>;
+}
+
+export interface DocStreamRequest {
+  streamId: string;
+  title: string;
+  docType: string;
+  repoNames: string[];
+  context: string;
 }
 
 /**
@@ -56,7 +65,37 @@ export class AiWorkerHttpStreamClient implements AiWorkerStreamClient {
       throw new Error('ai-worker stream returned empty body');
     }
 
-    const reader = response.body.getReader();
+    yield* this.readSseBody(response.body);
+  }
+
+  async *streamGenerateDoc(request: DocStreamRequest): AsyncGenerator<SseEvent, void, unknown> {
+    const url = `${this.config.aiWorkerUrl.replace(/\/$/, '')}/internal/doc/generate/stream`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        streamId: request.streamId,
+        title: request.title,
+        docType: request.docType,
+        repoNames: request.repoNames,
+        context: request.context,
+      }),
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`ai-worker doc stream failed (${response.status}): ${body}`);
+    }
+
+    if (!response.body) {
+      throw new Error('ai-worker doc stream returned empty body');
+    }
+
+    yield* this.readSseBody(response.body);
+  }
+
+  private async *readSseBody(body: ReadableStream<Uint8Array>): AsyncGenerator<SseEvent, void, unknown> {
+    const reader = body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
 
@@ -144,6 +183,23 @@ export class MockAiWorkerStreamClient implements AiWorkerStreamClient {
       data: {
         messageId: `msg_${request.streamId.slice(0, 8)}`,
         interrupted: false,
+      },
+    };
+  }
+
+  async *streamGenerateDoc(request: DocStreamRequest): AsyncGenerator<SseEvent, void, unknown> {
+    yield { event: 'status', data: { phase: 'analyzing' } };
+    yield { event: 'status', data: { phase: 'generating' } };
+    const text = `# ${request.title}\n\nMock 文档内容`;
+    for (const chunk of [text]) {
+      yield { event: 'token', data: { text: chunk } };
+    }
+    yield {
+      event: 'done',
+      data: {
+        interrupted: false,
+        content: text,
+        messageId: `doc_${request.streamId.slice(0, 8)}`,
       },
     };
   }

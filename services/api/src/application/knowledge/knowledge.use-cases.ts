@@ -29,12 +29,20 @@ function toSummary(doc: KnowledgeDocModel, includeContent = false): KnowledgeDoc
   };
 }
 
-async function buildCodeContext(core: CoreHttpClient, repoIds: string[]): Promise<string> {
-  const hits = await core.search('项目结构 核心功能 接口 模块 代码', repoIds);
-  if (!hits.length) {
-    return '';
+export async function buildKnowledgeDocContext(core: CoreHttpClient, repoIds: string[]): Promise<string> {
+  const [docContext, searchHits] = await Promise.all([
+    core.buildDocContext(repoIds),
+    core.search('系统架构 业务模块 数据表 API 接口 对外服务', repoIds),
+  ]);
+
+  const sections = [docContext.contextText];
+  if (searchHits.length) {
+    const searchSection = searchHits
+      .map((h) => `### ${h.title} (${h.type})\n${h.snippet}${h.ref ? `\n引用: ${h.ref}` : ''}`)
+      .join('\n\n');
+    sections.push(`## 语义检索补充\n\n${searchSection}`);
   }
-  return hits.map((h) => `### ${h.title} (${h.type})\n${h.snippet}${h.ref ? `\n引用: ${h.ref}` : ''}`).join('\n\n');
+  return sections.join('\n\n---\n\n');
 }
 
 async function resolveRepoNames(repos: RepoRepository, repoIds: string[]): Promise<string[]> {
@@ -134,7 +142,7 @@ export class GenerateKnowledgeDocContentUseCase {
     }
 
     const repoNames = await resolveRepoNames(this.repos, doc.repoIds);
-    const context = await buildCodeContext(this.core, doc.repoIds);
+    const context = await buildKnowledgeDocContext(this.core, doc.repoIds);
     const { content } = await this.aiWorker.generateDoc({
       title: doc.title,
       docType: doc.docType,

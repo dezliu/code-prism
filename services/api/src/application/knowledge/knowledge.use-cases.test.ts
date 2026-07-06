@@ -35,6 +35,18 @@ function createMocks() {
   } as unknown as RepoRepository;
 
   const core = {
+    buildDocContext: vi.fn().mockResolvedValue({
+      repos: [
+        {
+          repoId: 'repo-1',
+          repoName: 'Demo Repo',
+          url: 'https://example.com/demo.git',
+          directoryTree: '.\n└── main.go',
+          fileContents: [{ path: 'main.go', kind: 'source', content: 'func main() {}' }],
+        },
+      ],
+      contextText: '## 仓库：Demo Repo\n\n### 文件：main.go',
+    }),
     search: vi.fn().mockResolvedValue([
       { type: 'code' as const, title: 'main.go', snippet: 'func main() {}', ref: 'main.go' },
     ]),
@@ -59,13 +71,17 @@ describe('GenerateKnowledgeDocContentUseCase', () => {
     await expect(useCase.execute('doc-1')).rejects.toThrow('请先关联至少一个 Git 仓库');
   });
 
-  it('should search code, call LLM, and update content', async () => {
+  it('should clone repos, analyze code, call LLM, and update content', async () => {
     const { docs, repos, core, aiWorker } = createMocks();
     const useCase = new GenerateKnowledgeDocContentUseCase(docs, repos, core, aiWorker);
 
     const result = await useCase.execute('doc-1');
 
-    expect(core.search).toHaveBeenCalledWith('项目结构 核心功能 接口 模块 代码', ['repo-1']);
+    expect(core.buildDocContext).toHaveBeenCalledWith(['repo-1']);
+    expect(core.search).toHaveBeenCalledWith(
+      '系统架构 业务模块 数据表 API 接口 对外服务',
+      ['repo-1'],
+    );
     expect(aiWorker.generateDoc).toHaveBeenCalledWith(
       expect.objectContaining({
         title: '测试知识库',

@@ -10,6 +10,7 @@ import {
 } from '../../infrastructure/clients/ai-worker.client.js';
 import { createHealthRouter } from './health.js';
 import { createChatRoutes } from './chat-routes.js';
+import { createKnowledgeDocRoutes } from './knowledge-doc-routes.js';
 import { RedisStreamCancelStore, type StreamCancelStore } from '../../infrastructure/clients/stream-cancel.store.js';
 import { createCorsMiddleware } from './cors.js';
 import { buildGraphQLContext } from '../../graphql/context-factory.js';
@@ -34,6 +35,11 @@ export function createApp(deps: HttpServerDeps): Express {
     aiWorkerClient,
     cancelStore,
     usePersistence: deps.usePersistence,
+  }));
+  app.use(createKnowledgeDocRoutes({
+    config: deps.config,
+    aiWorkerClient,
+    cancelStore,
   }));
 
   return app;

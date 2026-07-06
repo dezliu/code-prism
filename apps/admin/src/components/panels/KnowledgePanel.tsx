@@ -5,6 +5,7 @@ import {
 } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import { gql } from '../../lib/gql';
+import { DocGenerateProgressModal } from '../DocGenerateProgressModal';
 
 interface KnowledgeDoc {
   id: string;
@@ -39,7 +40,13 @@ export function KnowledgePanel() {
   const [loading, setLoading] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editDoc, setEditDoc] = useState<KnowledgeDoc | null>(null);
-  const [generating, setGenerating] = useState(false);
+  const [generateModalOpen, setGenerateModalOpen] = useState(false);
+  const [generateTarget, setGenerateTarget] = useState<{
+    docId: string;
+    title: string;
+    docType: string;
+    repoIds: string[];
+  } | null>(null);
   const [saving, setSaving] = useState(false);
   const [createForm] = Form.useForm();
   const [editForm] = Form.useForm();
@@ -164,7 +171,6 @@ export function KnowledgePanel() {
       message.warning('请先关联至少一个 Git 仓库');
       return;
     }
-    setGenerating(true);
     try {
       await gql(
         `mutation($id: ID!, $input: UpdateKnowledgeDocInput!) {
@@ -179,19 +185,22 @@ export function KnowledgePanel() {
           },
         },
       );
-      const data = await gql<{ generateKnowledgeDocContent: KnowledgeDoc }>(`
-        mutation($id: ID!) {
-          generateKnowledgeDocContent(id: $id) { id content }
-        }
-      `, { id: editDoc.id });
-      editForm.setFieldValue('content', data.generateKnowledgeDocContent.content ?? '');
-      message.success('文档已从代码索引生成');
-      await loadDocs();
+      setGenerateTarget({
+        docId: editDoc.id,
+        title: editForm.getFieldValue('title'),
+        docType: editForm.getFieldValue('docType'),
+        repoIds,
+      });
+      setGenerateModalOpen(true);
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '生成失败');
-    } finally {
-      setGenerating(false);
+      message.error(error instanceof Error ? error.message : '保存关联仓库失败');
     }
+  };
+
+  const onGenerateComplete = async (content: string) => {
+    editForm.setFieldValue('content', content);
+    message.success('文档已从代码仓库分析生成');
+    await loadDocs();
   };
 
   const onPublish = async (id: string) => {
@@ -313,7 +322,7 @@ export function KnowledgePanel() {
             {editDoc?.status !== 'published' && (
               <Button onClick={() => editDoc && onPublish(editDoc.id)}>发布</Button>
             )}
-            <Button loading={generating} onClick={onGenerateContent}>
+            <Button onClick={onGenerateContent}>
               从代码生成文档
             </Button>
             <Button type="primary" loading={saving} onClick={onSaveEdit}>保存</Button>
@@ -345,6 +354,21 @@ export function KnowledgePanel() {
           </Form.Item>
         </Form>
       </Modal>
+
+      <DocGenerateProgressModal
+        open={generateModalOpen}
+        docId={generateTarget?.docId ?? null}
+        title={generateTarget?.title}
+        docType={generateTarget?.docType}
+        repoIds={generateTarget?.repoIds}
+        onClose={() => {
+          setGenerateModalOpen(false);
+          setGenerateTarget(null);
+        }}
+        onComplete={(content) => {
+          void onGenerateComplete(content);
+        }}
+      />
     </>
   );
 }

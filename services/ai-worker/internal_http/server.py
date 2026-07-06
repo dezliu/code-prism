@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from chains.doc_gen import generate_doc_content
+from chains.doc_gen import generate_doc_content, stream_doc_generation
 from chains.qa_router import stream_qa_with_rag
 from infrastructure.config import load_env
 from infrastructure.llm.streaming import is_cancelled, request_cancel
@@ -99,6 +99,47 @@ def doc_generate(body: DocGenerateRequest) -> dict[str, str]:
         context=body.context,
     )
     return {"content": content}
+
+
+class DocStreamRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    stream_id: str = Field(alias="streamId")
+    title: str = Field(min_length=1)
+    doc_type: str = Field(default="training", alias="docType")
+    repo_names: list[str] = Field(default_factory=list, alias="repoNames")
+    context: str = ""
+
+
+async def _doc_event_stream(body: DocStreamRequest) -> AsyncIterator[str]:
+    client = _redis_client()
+
+    def cancelled() -> bool:
+        return is_cancelled(client, body.stream_id)
+
+    async for event_name, data in stream_doc_generation(
+        title=body.title,
+        doc_type=body.doc_type,
+        repo_names=body.repo_names,
+        context=body.context,
+        is_cancelled=cancelled,
+    ):
+        if data is None:
+            continue
+        yield _format_sse(event_name, data)
+
+
+@app.post("/internal/doc/generate/stream")
+async def doc_generate_stream(body: DocStreamRequest) -> StreamingResponse:
+    return StreamingResponse(
+        _doc_event_stream(body),
+        media_type="text/event-stream; charset=utf-8",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Stream-Id": body.stream_id,
+        },
+    )
 
 
 @app.post("/internal/chat/stop")
