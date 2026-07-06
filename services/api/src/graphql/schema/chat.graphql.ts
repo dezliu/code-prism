@@ -35,5 +35,6 @@ export const chatTypeDefs = /* GraphQL */ `
 
   extend type Mutation {
     createChatSession(title: String): ChatSession!
+    deleteChatSession(sessionId: ID!): Boolean!
   }
 `;

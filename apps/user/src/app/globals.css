@@ -252,13 +252,10 @@ body {
 .user-session-item {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
-  padding: 10px 16px;
-  cursor: pointer;
+  gap: 4px;
+  padding: 0;
   border-left: 3px solid transparent;
   transition: background 0.15s, border-color 0.15s;
-  text-decoration: none;
-  color: inherit;
 }
 
 .user-session-item:hover {
@@ -268,6 +265,18 @@ body {
 .user-session-item.active {
   background: var(--user-accent-soft);
   border-left-color: var(--user-accent);
+}
+
+.user-session-link {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 10px 8px 10px 16px;
+  cursor: pointer;
+  text-decoration: none;
+  color: inherit;
 }
 
 .user-session-icon {
@@ -293,6 +302,33 @@ body {
   font-size: 12px;
   color: var(--user-text-muted);
   margin-top: 2px;
+}
+
+.user-session-delete {
+  flex-shrink: 0;
+  align-self: center;
+  width: 24px;
+  height: 24px;
+  margin-right: 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--user-text-muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+
+.user-session-item:hover .user-session-delete,
+.user-session-delete:focus-visible {
+  opacity: 1;
+}
+
+.user-session-delete:hover {
+  background: #fee2e2;
+  color: #dc2626;
 }
 
 .user-main {

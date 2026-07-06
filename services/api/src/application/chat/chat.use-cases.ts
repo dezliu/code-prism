@@ -2,6 +2,7 @@ import { NotFoundError } from '../../domain/errors.js';
 import { ChatRepository } from '../../infrastructure/db/repositories/chat.repository.js';
 import type { ContextAnchor } from '../../infrastructure/db/models/chat-session.model.js';
 import type { MessageSource } from '../../infrastructure/db/models/chat-message.model.js';
+import { deriveSessionTitle, isDefaultSessionTitle } from './session-title.js';
 
 export interface ChatSessionSummary {
   id: string;
@@ -33,6 +34,18 @@ export class ListChatSessionsUseCase {
   }
 }
 
+export class DeleteChatSessionUseCase {
+  constructor(private readonly chat: ChatRepository) {}
+
+  async execute(sessionId: string, userId: string): Promise<boolean> {
+    const deleted = await this.chat.deleteSession(sessionId, userId);
+    if (deleted === 0) {
+      throw new NotFoundError('ChatSession', sessionId);
+    }
+    return true;
+  }
+}
+
 export class CreateChatSessionUseCase {
   constructor(private readonly chat: ChatRepository) {}
 
@@ -44,6 +57,23 @@ export class CreateChatSessionUseCase {
       updatedAt: session.updatedAt.toISOString(),
       anchor: session.anchor,
     };
+  }
+}
+
+export class EnsureSessionTitleUseCase {
+  constructor(private readonly chat: ChatRepository) {}
+
+  async execute(sessionId: string, userId: string, message: string): Promise<string> {
+    const session = await this.chat.findSession(sessionId, userId);
+    if (!session) {
+      throw new NotFoundError('ChatSession', sessionId);
+    }
+    if (isDefaultSessionTitle(session.title)) {
+      const title = deriveSessionTitle(message);
+      await this.chat.updateTitle(sessionId, title);
+      return title;
+    }
+    return session.title;
   }
 }
 

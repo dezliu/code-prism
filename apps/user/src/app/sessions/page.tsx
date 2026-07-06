@@ -1,6 +1,6 @@
 'use client';
 
-import { Button, Card, List, Space, Typography, message } from 'antd';
+import { Button, Card, List, Popconfirm, Space, Typography, message } from 'antd';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AppShell, PageHeader } from '@lingprism/ui';
@@ -82,6 +82,22 @@ export default function SessionsPage() {
     }
   };
 
+  const deleteSession = async (sessionId: string) => {
+    try {
+      await gql(`
+        mutation($sessionId: ID!) { deleteChatSession(sessionId: $sessionId) }
+      `, { sessionId });
+      setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+      if (activeId === sessionId) {
+        setActiveId(null);
+        setMessages([]);
+      }
+      message.success('会话已删除');
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '删除失败');
+    }
+  };
+
   return (
     <AppShell appTitle="用户平台" accentColor="#f97316">
       <PageHeader
@@ -105,6 +121,30 @@ export default function SessionsPage() {
               <List.Item
                 style={{ cursor: 'pointer', background: activeId === item.id ? '#fff7e6' : undefined }}
                 onClick={() => loadMessages(item.id)}
+                actions={[
+                  <Popconfirm
+                    key="delete"
+                    title="确定删除此会话？"
+                    description="删除后无法恢复"
+                    okText="删除"
+                    cancelText="取消"
+                    okButtonProps={{ danger: true }}
+                    onConfirm={(e) => {
+                      e?.stopPropagation();
+                      deleteSession(item.id);
+                    }}
+                    onCancel={(e) => e?.stopPropagation()}
+                  >
+                    <Button
+                      type="text"
+                      size="small"
+                      danger
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      删除
+                    </Button>
+                  </Popconfirm>,
+                ]}
               >
                 <List.Item.Meta title={item.title} description={new Date(item.updatedAt).toLocaleString()} />
               </List.Item>

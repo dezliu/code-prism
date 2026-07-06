@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   fetchCurrentUser,
   logout,
   useChatSSE,
   type AuthUser,
+  type ChatSource,
 } from '@lingprism/graphql';
 import { getAuthToken } from '@lingprism/shared';
 import { GRAPHQL_ENDPOINT } from '@lingprism/graphql/constants';
@@ -16,6 +17,14 @@ interface ChatSession {
   id: string;
   title: string;
   updatedAt: string;
+}
+
+interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  sources?: ChatSource[];
+  interrupted?: boolean;
 }
 
 const RECOMMENDATIONS = [
@@ -37,6 +46,59 @@ async function fetchSessions(): Promise<ChatSession[]> {
   const json = await res.json();
   if (json.errors?.length) return [];
   return json.data.chatSessions;
+}
+
+async function fetchMessages(sessionId: string): Promise<ChatMessage[]> {
+  const res = await fetch(GRAPHQL_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${getAuthToken()}`,
+    },
+    body: JSON.stringify({
+      query: `
+        query($sessionId: ID!) {
+          chatMessages(sessionId: $sessionId) {
+            id role content sources { type title ref } interrupted
+          }
+        }
+      `,
+      variables: { sessionId },
+    }),
+  });
+  const json = await res.json();
+  if (json.errors?.length) return [];
+  return (json.data.chatMessages as Array<{
+    id: string;
+    role: string;
+    content: string;
+    sources: ChatSource[] | null;
+    interrupted: boolean;
+  }>).map((msg) => ({
+    id: msg.id,
+    role: msg.role === 'user' ? 'user' : 'assistant',
+    content: msg.content,
+    sources: msg.sources ?? undefined,
+    interrupted: msg.interrupted,
+  }));
+}
+
+async function deleteSession(id: string): Promise<void> {
+  const res = await fetch(GRAPHQL_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${getAuthToken()}`,
+    },
+    body: JSON.stringify({
+      query: 'mutation($sessionId: ID!) { deleteChatSession(sessionId: $sessionId) }',
+      variables: { sessionId: id },
+    }),
+  });
+  const json = await res.json();
+  if (json.errors?.length) {
+    throw new Error(json.errors[0].message);
+  }
 }
 
 function groupSessionsByDate(sessions: ChatSession[]): Array<{ label: string; items: ChatSession[] }> {
@@ -73,9 +135,12 @@ export default function ChatPageInner() {
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [input, setInput] = useState('');
   const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [loadingMessages, setLoadingMessages] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showChat, setShowChat] = useState(!!sessionId);
   const chat = useChatSSE();
+  const wasStreamingRef = useRef(false);
 
   useEffect(() => {
     fetchCurrentUser()
@@ -96,6 +161,85 @@ export default function ChatPageInner() {
     if (sessionId) setShowChat(true);
   }, [sessionId]);
 
+  useEffect(() => {
+    if (!sessionId) {
+      setMessages([]);
+      chat.reset();
+      return;
+    }
+
+    if (chat.streaming) {
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingMessages(true);
+    fetchMessages(sessionId)
+      .then((list) => {
+        if (!cancelled) {
+          setMessages(list);
+          chat.reset();
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingMessages(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset only when switching sessions
+  }, [sessionId, chat.streaming]);
+
+  useEffect(() => {
+    if (!chat.sessionInfo) return;
+
+    const { id, title } = chat.sessionInfo;
+    if (id !== sessionId) {
+      router.replace(`/?sessionId=${id}`);
+    }
+
+    setSessions((prev) => {
+      const index = prev.findIndex((item) => item.id === id);
+      const updatedAt = new Date().toISOString();
+      if (index >= 0) {
+        const next = [...prev];
+        next[index] = { ...next[index], title, updatedAt };
+        return next;
+      }
+      return [{ id, title, updatedAt }, ...prev];
+    });
+  }, [chat.sessionInfo, sessionId, router]);
+
+  useEffect(() => {
+    if (chat.streaming) {
+      wasStreamingRef.current = true;
+      return;
+    }
+
+    if (!wasStreamingRef.current) {
+      return;
+    }
+    wasStreamingRef.current = false;
+
+    if (chat.content) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `assistant-${Date.now()}`,
+          role: 'assistant',
+          content: chat.content,
+          sources: chat.sources.length > 0 ? [...chat.sources] : undefined,
+          interrupted: chat.interrupted,
+        },
+      ]);
+    }
+    chat.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- finalize one streaming turn
+  }, [chat.streaming, chat.content, chat.sources, chat.interrupted]);
+
   const handleSend = async () => {
     const message = input.trim();
     if (!message || chat.streaming) {
@@ -103,6 +247,14 @@ export default function ChatPageInner() {
     }
     setInput('');
     setShowChat(true);
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `user-${Date.now()}`,
+        role: 'user',
+        content: message,
+      },
+    ]);
     await chat.send(message, sessionId);
   };
 
@@ -112,8 +264,30 @@ export default function ChatPageInner() {
   };
 
   const handleNewChat = () => {
+    chat.reset();
+    setMessages([]);
     setShowChat(true);
     router.push('/');
+  };
+
+  const handleDeleteSession = async (id: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!window.confirm('确定删除此会话？删除后无法恢复。')) {
+      return;
+    }
+    try {
+      await deleteSession(id);
+      setSessions((prev) => prev.filter((s) => s.id !== id));
+      if (sessionId === id) {
+        chat.reset();
+        setMessages([]);
+        setShowChat(false);
+        router.push('/');
+      }
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : '删除失败');
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -154,18 +328,31 @@ export default function ChatPageInner() {
             <div key={group.label}>
               <div className="user-session-date">{group.label}</div>
               {group.items.map((item) => (
-                <a
+                <div
                   key={item.id}
-                  href={`/?sessionId=${item.id}`}
                   className={`user-session-item${sessionId === item.id ? ' active' : ''}`}
-                  onClick={() => setShowChat(true)}
                 >
-                  <span className="user-session-icon">💬</span>
-                  <div className="user-session-text">
-                    <div className="user-session-name">{item.title}</div>
-                    <div className="user-session-time">{formatSessionTime(item.updatedAt)}</div>
-                  </div>
-                </a>
+                  <a
+                    href={`/?sessionId=${item.id}`}
+                    className="user-session-link"
+                    onClick={() => setShowChat(true)}
+                  >
+                    <span className="user-session-icon">💬</span>
+                    <div className="user-session-text">
+                      <div className="user-session-name">{item.title}</div>
+                      <div className="user-session-time">{formatSessionTime(item.updatedAt)}</div>
+                    </div>
+                  </a>
+                  <button
+                    type="button"
+                    className="user-session-delete"
+                    title="删除会话"
+                    aria-label="删除会话"
+                    onClick={(e) => handleDeleteSession(item.id, e)}
+                  >
+                    ×
+                  </button>
+                </div>
               ))}
             </div>
           ))
@@ -260,33 +447,60 @@ export default function ChatPageInner() {
               ))
             ) : null}
 
-            {chat.content ? (
+            {loadingMessages ? (
               <div className="user-msg assistant">
                 <span className="user-msg-label">灵镜</span>
+                <div className="user-msg-bubble">加载历史消息…</div>
+              </div>
+            ) : null}
+
+            {!loadingMessages && messages.length === 0 && !chat.streaming && !chat.content ? (
+              <div className="user-msg assistant">
+                <span className="user-msg-label">灵镜</span>
+                <div className="user-msg-bubble">输入问题开始对话…</div>
+              </div>
+            ) : null}
+
+            {messages.map((msg) => (
+              <div key={msg.id} className={`user-msg ${msg.role}`}>
+                <span className="user-msg-label">{msg.role === 'user' ? '我' : '灵镜'}</span>
                 <div className="user-msg-bubble">
-                  {chat.content}
-                  {chat.sources.length > 0 ? (
+                  {msg.content}
+                  {msg.role === 'assistant' && msg.sources && msg.sources.length > 0 ? (
                     <div style={{ marginTop: 4 }}>
-                      {chat.sources.map((source) => (
-                        <span key={`${source.title}-${source.ref ?? ''}`} className="user-source-tag">
+                      {msg.sources.map((source) => (
+                        <span key={`${msg.id}-${source.title}-${source.ref ?? ''}`} className="user-source-tag">
                           📄 来源：{source.title}
                         </span>
                       ))}
                     </div>
                   ) : null}
-                  {chat.interrupted ? (
+                  {msg.role === 'assistant' && msg.interrupted ? (
                     <span style={{ display: 'block', marginTop: 8, fontSize: 12, color: 'var(--user-text-muted)', fontStyle: 'italic' }}>
                       （已中断）
                     </span>
                   ) : null}
                 </div>
               </div>
-            ) : (
+            ))}
+
+            {chat.streaming || chat.content ? (
               <div className="user-msg assistant">
                 <span className="user-msg-label">灵镜</span>
-                <div className="user-msg-bubble">输入问题开始对话…</div>
+                <div className="user-msg-bubble">
+                  {chat.content || '思考中…'}
+                  {chat.sources.length > 0 ? (
+                    <div style={{ marginTop: 4 }}>
+                      {chat.sources.map((source) => (
+                        <span key={`stream-${source.title}-${source.ref ?? ''}`} className="user-source-tag">
+                          📄 来源：{source.title}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
               </div>
-            )}
+            ) : null}
 
             {chat.streaming && chat.status ? (
               <div className="user-status-line">

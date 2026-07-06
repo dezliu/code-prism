@@ -23,6 +23,7 @@ import {
 import {
   ListChatSessionsUseCase,
   CreateChatSessionUseCase,
+  DeleteChatSessionUseCase,
   GetChatMessagesUseCase,
   PersistChatMessageUseCase,
   GetSessionContextUseCase,
@@ -132,6 +133,7 @@ export function buildGraphQLContext(
     ),
     listChatSessionsUseCase: new ListChatSessionsUseCase(chatRepo),
     createChatSessionUseCase: new CreateChatSessionUseCase(chatRepo),
+    deleteChatSessionUseCase: new DeleteChatSessionUseCase(chatRepo),
     getChatMessagesUseCase: new GetChatMessagesUseCase(chatRepo),
     persistChatMessageUseCase: new PersistChatMessageUseCase(chatRepo),
     getSessionContextUseCase: new GetSessionContextUseCase(chatRepo),

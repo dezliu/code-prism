@@ -6,6 +6,7 @@ import type { ListKnowledgeDocsUseCase, GetKnowledgeDocUseCase, CreateKnowledgeD
 import type {
   ListChatSessionsUseCase,
   CreateChatSessionUseCase,
+  DeleteChatSessionUseCase,
   GetChatMessagesUseCase,
   PersistChatMessageUseCase,
   GetSessionContextUseCase,
@@ -62,6 +63,7 @@ export interface GraphQLContext {
   generateTrainingDocUseCase: GenerateTrainingDocUseCase;
   listChatSessionsUseCase: ListChatSessionsUseCase;
   createChatSessionUseCase: CreateChatSessionUseCase;
+  deleteChatSessionUseCase: DeleteChatSessionUseCase;
   getChatMessagesUseCase: GetChatMessagesUseCase;
   persistChatMessageUseCase: PersistChatMessageUseCase;
   getSessionContextUseCase: GetSessionContextUseCase;
@@ -319,6 +321,11 @@ export function createResolvers() {
         withHandler(() => {
           const auth = requireAuth(ctx);
           return ctx.createChatSessionUseCase.execute(auth.userId, args.title);
+        }),
+      deleteChatSession: (_: unknown, args: { sessionId: string }, ctx: GraphQLContext) =>
+        withHandler(() => {
+          const auth = requireAuth(ctx);
+          return ctx.deleteChatSessionUseCase.execute(args.sessionId, auth.userId);
         }),
       generateArchDraft: (_: unknown, args: { repoId: string }, ctx: GraphQLContext) =>
         withHandler(() => {

@@ -36,10 +36,24 @@ export class ChatRepository {
     });
   }
 
+  async updateTitle(sessionId: string, title: string): Promise<void> {
+    await ChatSessionModel.query().findById(sessionId).patch({
+      title: title.trim() || '新会话',
+      updatedAt: new Date(),
+    });
+  }
+
   async listMessages(sessionId: string): Promise<ChatMessageModel[]> {
     return ChatMessageModel.query()
       .where('session_id', sessionId)
       .orderBy('created_at', 'asc');
+  }
+
+  async deleteSession(sessionId: string, userId: string): Promise<number> {
+    return ChatSessionModel.query()
+      .delete()
+      .where('id', sessionId)
+      .where('user_id', userId);
   }
 
   async addMessage(input: {

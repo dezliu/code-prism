@@ -6,6 +6,7 @@ import { PassthroughChatStreamOrchestrator } from '../../application/chat/passth
 import { StreamChatUseCase } from '../../application/chat/stream-chat.js';
 import {
   CreateChatSessionUseCase,
+  EnsureSessionTitleUseCase,
   GetSessionContextUseCase,
   PersistChatMessageUseCase,
 } from '../../application/chat/chat.use-cases.js';
@@ -46,6 +47,7 @@ export function createChatRoutes(deps: ChatRoutesDeps): Router {
       : new ChatStreamOrchestrator(
           streamChatUseCase,
           new CreateChatSessionUseCase(chatRepo),
+          new EnsureSessionTitleUseCase(chatRepo),
           new GetSessionContextUseCase(chatRepo),
           new PersistChatMessageUseCase(chatRepo),
           listEnabledQaTemplates,

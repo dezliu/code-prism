@@ -96,7 +96,20 @@ export class RepoRepository {
     if (input.businessOwner !== undefined) patch.businessOwner = input.businessOwner;
     if (input.techOwner !== undefined) patch.techOwner = input.techOwner;
 
-    await RepoMetadataModel.query().findById(repoId).patch(patch);
+    const patched = await RepoMetadataModel.query().findById(repoId).patch(patch);
+    if (patched === 0) {
+      const repo = await RepoModel.query().findById(repoId);
+      if (!repo) {
+        throw new Error(`Repo not found: ${repoId}`);
+      }
+      await RepoMetadataModel.query().insert({
+        repoId,
+        displayName: patch.displayName ?? repo.name,
+        tags: patch.tags ?? [],
+        businessOwner: patch.businessOwner ?? null,
+        techOwner: patch.techOwner ?? null,
+      });
+    }
 
     if (input.indexedInSearch !== undefined) {
       await RepoModel.query().findById(repoId).patch({

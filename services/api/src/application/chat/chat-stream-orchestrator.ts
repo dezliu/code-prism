@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Response } from 'express';
 import {
   CreateChatSessionUseCase,
+  EnsureSessionTitleUseCase,
   GetSessionContextUseCase,
   PersistChatMessageUseCase,
 } from './chat.use-cases.js';
@@ -11,6 +12,7 @@ import {
   writeSseEvent,
   type StreamChatInput,
 } from './stream-chat.js';
+import { deriveSessionTitle } from './session-title.js';
 import type { SseEvent } from '../../infrastructure/clients/ai-worker.client.js';
 import type { ContextAnchor } from '../../infrastructure/db/models/chat-session.model.js';
 import type { MessageSource } from '../../infrastructure/db/models/chat-message.model.js';
@@ -20,6 +22,7 @@ export class ChatStreamOrchestrator {
   constructor(
     private readonly streamChat: StreamChatUseCase,
     private readonly createSession: CreateChatSessionUseCase,
+    private readonly ensureSessionTitle: EnsureSessionTitleUseCase,
     private readonly getSessionContext: GetSessionContextUseCase,
     private readonly persistMessage: PersistChatMessageUseCase,
     private readonly listEnabledQaTemplates: ListEnabledQaTemplatesUseCase,
@@ -42,10 +45,20 @@ export class ChatStreamOrchestrator {
     }
 
     let sessionId = input.sessionId;
+    let sessionTitle: string;
+
     if (!sessionId) {
-      const session = await this.createSession.execute(input.userId);
+      sessionTitle = deriveSessionTitle(message);
+      const session = await this.createSession.execute(input.userId, sessionTitle);
       sessionId = session.id;
+    } else {
+      sessionTitle = await this.ensureSessionTitle.execute(sessionId, input.userId, message);
     }
+
+    writeSseEvent(input.res, {
+      event: 'session',
+      data: { sessionId, title: sessionTitle },
+    });
 
     await this.persistMessage.execute({
       sessionId,

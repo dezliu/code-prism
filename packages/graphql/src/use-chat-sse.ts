@@ -28,6 +28,11 @@ export interface ChatTemplateHint {
   preview: string;
 }
 
+export interface ChatSessionInfo {
+  id: string;
+  title: string;
+}
+
 export interface UseChatSSEReturn {
   content: string;
   status: ChatSSEStatus | null;
@@ -36,6 +41,7 @@ export interface UseChatSSEReturn {
   interrupted: boolean;
   sources: ChatSource[];
   templateHints: ChatTemplateHint[];
+  sessionInfo: ChatSessionInfo | null;
   send: (message: string, sessionId?: string) => Promise<void>;
   stop: () => Promise<void>;
   reset: () => void;
@@ -78,6 +84,7 @@ export function useChatSSE(): UseChatSSEReturn {
   const [interrupted, setInterrupted] = useState(false);
   const [sources, setSources] = useState<ChatSource[]>([]);
   const [templateHints, setTemplateHints] = useState<ChatTemplateHint[]>([]);
+  const [sessionInfo, setSessionInfo] = useState<ChatSessionInfo | null>(null);
 
   const streamIdRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -89,6 +96,7 @@ export function useChatSSE(): UseChatSSEReturn {
     setInterrupted(false);
     setSources([]);
     setTemplateHints([]);
+    setSessionInfo(null);
     streamIdRef.current = null;
   }, []);
 
@@ -185,6 +193,12 @@ export function useChatSSE(): UseChatSSEReturn {
                 streamIdRef.current = streamId;
               }
               setStatus({ phase, streamId: streamId ?? streamIdRef.current ?? undefined });
+            } else if (event === 'session') {
+              const id = String(data.sessionId ?? '');
+              const title = String(data.title ?? '');
+              if (id) {
+                setSessionInfo({ id, title });
+              }
             } else if (event === 'token') {
               const text = String(data.text ?? '');
               setContent((prev) => prev + text);
@@ -237,6 +251,7 @@ export function useChatSSE(): UseChatSSEReturn {
     interrupted,
     sources,
     templateHints,
+    sessionInfo,
     send,
     stop,
     reset,
