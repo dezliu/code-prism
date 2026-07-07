@@ -11,19 +11,26 @@ import (
 )
 
 type RepoSyncService struct {
-	db   *mysql.Client
-	git  *gitclient.Client
+	db            *mysql.Client
+	git           *gitclient.Client
+	indexTrigger  IndexTrigger
 }
 
-func NewRepoSyncService(db *mysql.Client, git *gitclient.Client) *RepoSyncService {
-	return &RepoSyncService{db: db, git: git}
+// IndexTrigger 索引触发接口，避免循环依赖
+type IndexTrigger interface {
+	EnqueueIndex(ctx context.Context, repoID string) (EnqueueIndexResult, error)
+}
+
+func NewRepoSyncService(db *mysql.Client, git *gitclient.Client, indexTrigger IndexTrigger) *RepoSyncService {
+	return &RepoSyncService{db: db, git: git, indexTrigger: indexTrigger}
 }
 
 type connectedRepo struct {
-	ID            string
-	URL           string
-	DefaultBranch string
-	LocalHash     sql.NullString
+	ID              string
+	URL             string
+	DefaultBranch   string
+	LocalHash       sql.NullString
+	IndexedInSearch bool
 }
 
 func (s *RepoSyncService) PollOnce(ctx context.Context) {
@@ -32,7 +39,7 @@ func (s *RepoSyncService) PollOnce(ctx context.Context) {
 	}
 
 	rows, err := s.db.DB().QueryContext(ctx, `
-		SELECT id, url, default_branch, local_commit_hash
+		SELECT id, url, default_branch, local_commit_hash, indexed_in_search
 		FROM repos
 		WHERE connection_status = 'connected' AND enabled = true
 	`)
@@ -45,7 +52,7 @@ func (s *RepoSyncService) PollOnce(ctx context.Context) {
 	repos := []connectedRepo{}
 	for rows.Next() {
 		var rec connectedRepo
-		if scanErr := rows.Scan(&rec.ID, &rec.URL, &rec.DefaultBranch, &rec.LocalHash); scanErr != nil {
+		if scanErr := rows.Scan(&rec.ID, &rec.URL, &rec.DefaultBranch, &rec.LocalHash, &rec.IndexedInSearch); scanErr != nil {
 			continue
 		}
 		repos = append(repos, rec)
@@ -120,6 +127,14 @@ func (s *RepoSyncService) syncRepo(ctx context.Context, repo connectedRepo) {
 			updated_at = NOW()
 		WHERE id = ?
 	`, syncResult.HeadCommitHash, remoteHash, syncResult.LastCommitAt, syncResult.LastCommitSummary, syncStatus, repo.ID)
+
+	// 自动触发增量索引：当仓库已纳入检索库且 commit 发生变化时
+	if repo.IndexedInSearch && s.indexTrigger != nil && syncResult.HeadCommitHash != localHash {
+		log.Printf(`{"level":"info","msg":"auto enqueue index after sync","repoId":%q}`, repo.ID)
+		if _, err := s.indexTrigger.EnqueueIndex(ctx, repo.ID); err != nil {
+			log.Printf(`{"level":"warn","msg":"auto enqueue index failed","repoId":%q,"error":%q}`, repo.ID, err.Error())
+		}
+	}
 }
 
 func StartRepoSyncWorker(ctx context.Context, svc *RepoSyncService, interval time.Duration) {

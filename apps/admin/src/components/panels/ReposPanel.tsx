@@ -5,6 +5,7 @@ import {
 } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import { gql } from '../../lib/gql';
+import { IndexJobListModal } from '../IndexJobListModal';
 
 interface RepoRow {
   id: string;
@@ -34,6 +35,8 @@ export function ReposPanel() {
   const [metaModal, setMetaModal] = useState<RepoRow | null>(null);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [errorModal, setErrorModal] = useState<{ repoName: string; error: string } | null>(null);
+  const [indexJobModalOpen, setIndexJobModalOpen] = useState(false);
+  const [syncingRepoId, setSyncingRepoId] = useState<string | null>(null);
   const [metaForm] = Form.useForm();
   const [createForm] = Form.useForm();
 
@@ -162,6 +165,22 @@ export function ReposPanel() {
     }
   };
 
+  const syncAndIndex = async (repoId: string) => {
+    setSyncingRepoId(repoId);
+    try {
+      await gql(
+        `mutation($repoId: ID!) { syncAndIndexRepo(repoId: $repoId) { jobId status } }`,
+        { repoId },
+      );
+      message.success('已加入索引队列');
+      await loadRepos();
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '索引触发失败');
+    } finally {
+      setSyncingRepoId(null);
+    }
+  };
+
   const deleteRepo = (row: RepoRow) => {
     Modal.confirm({
       title: '确认删除数据源？',
@@ -212,6 +231,7 @@ export function ReposPanel() {
                   { value: 'indexed', label: '已索引' },
                 ]}
               />
+              <Button onClick={() => setIndexJobModalOpen(true)}>索引任务</Button>
               <Button type="primary" onClick={openCreateModal}>新增仓库</Button>
             </Space>
           )}
@@ -286,6 +306,14 @@ export function ReposPanel() {
                     <Space>
                       <Button size="small" onClick={() => openMetaModal(row)}>元数据</Button>
                       <Button size="small" onClick={() => retestConnection(row.id)}>重测</Button>
+                      <Button
+                        size="small"
+                        type="primary"
+                        loading={syncingRepoId === row.id}
+                        onClick={() => void syncAndIndex(row.id)}
+                      >
+                        同步索引
+                      </Button>
                       <Button size="small" danger onClick={() => deleteRepo(row)}>删除</Button>
                     </Space>
                     {row.hasPendingCommit && (
@@ -347,6 +375,8 @@ export function ReposPanel() {
           </Form.Item>
         </Form>
       </Modal>
+
+      <IndexJobListModal open={indexJobModalOpen} onClose={() => setIndexJobModalOpen(false)} />
 
       <Modal
         title={`同步失败：${errorModal?.repoName}`}

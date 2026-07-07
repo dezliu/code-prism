@@ -49,6 +49,11 @@ export const repoTypeDefs = /* GraphQL */ `
     error: String
   }
 
+  type EnqueueIndexResult {
+    jobId: String!
+    status: String!
+  }
+
   extend type Query {
     repos: [Repo!]!
     repo(id: ID!): Repo
@@ -60,5 +65,6 @@ export const repoTypeDefs = /* GraphQL */ `
     updateRepoMetadata(repoId: ID!, input: UpdateRepoMetadataInput!): Repo!
     updateRepo(repoId: ID!, input: UpdateRepoInput!): Repo!
     deleteRepo(repoId: ID!): Boolean!
+    syncAndIndexRepo(repoId: ID!): EnqueueIndexResult!
   }
 `;

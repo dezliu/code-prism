@@ -189,3 +189,11 @@ export class DeleteRepoUseCase {
     return true;
   }
 }
+
+export class SyncAndIndexRepoUseCase {
+  constructor(private readonly core: CoreHttpClient) {}
+
+  async execute(repoId: string): Promise<{ jobId: string; status: string }> {
+    return this.core.enqueueIndex(repoId);
+  }
+}

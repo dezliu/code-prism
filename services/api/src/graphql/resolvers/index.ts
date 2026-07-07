@@ -1,7 +1,7 @@
 import { GraphQLScalarType } from 'graphql';
 import type { LoginUseCase } from '../../application/auth/login.js';
 import type { GetCurrentUserUseCase } from '../../application/auth/get-current-user.js';
-import type { ListReposUseCase, CreateRepoUseCase, TestRepoConnectionUseCase, UpdateRepoMetadataUseCase, UpdateRepoUseCase, DeleteRepoUseCase } from '../../application/repo/repo.use-cases.js';
+import type { ListReposUseCase, CreateRepoUseCase, TestRepoConnectionUseCase, UpdateRepoMetadataUseCase, UpdateRepoUseCase, DeleteRepoUseCase, SyncAndIndexRepoUseCase } from '../../application/repo/repo.use-cases.js';
 import type { ListKnowledgeBasesUseCase, GetKnowledgeBaseUseCase, CreateKnowledgeBaseUseCase, UpdateKnowledgeBaseUseCase, DeleteKnowledgeBaseUseCase, GetKnowledgeDocItemUseCase, CreateKnowledgeDocItemUseCase, UpdateKnowledgeDocItemUseCase, PublishKnowledgeDocItemUseCase, UpdateKnowledgeDocItemIndexUseCase, ListKnowledgeDocsUseCase, GetKnowledgeDocUseCase, CreateKnowledgeDocUseCase, UpdateKnowledgeDocUseCase, PublishKnowledgeDocUseCase, GenerateKnowledgeDocContentUseCase, GenerateTrainingDocUseCase } from '../../application/knowledge/knowledge.use-cases.js';
 import type {
   EnqueueDocGenerateJobUseCase,
@@ -69,6 +69,7 @@ export interface GraphQLContext {
   updateRepoMetadataUseCase: UpdateRepoMetadataUseCase;
   updateRepoUseCase: UpdateRepoUseCase;
   deleteRepoUseCase: DeleteRepoUseCase;
+  syncAndIndexRepoUseCase: SyncAndIndexRepoUseCase;
   listKnowledgeBasesUseCase: ListKnowledgeBasesUseCase;
   getKnowledgeBaseUseCase: GetKnowledgeBaseUseCase;
   createKnowledgeBaseUseCase: CreateKnowledgeBaseUseCase;
@@ -391,6 +392,11 @@ export function createResolvers() {
         withHandler(() => {
           requireAdmin(ctx);
           return ctx.deleteRepoUseCase.execute(args.repoId);
+        }),
+      syncAndIndexRepo: (_: unknown, args: { repoId: string }, ctx: GraphQLContext) =>
+        withHandler(() => {
+          requireAdmin(ctx);
+          return ctx.syncAndIndexRepoUseCase.execute(args.repoId);
         }),
       createKnowledgeBase: (
         _: unknown,

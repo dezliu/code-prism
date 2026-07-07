@@ -15,6 +15,7 @@ import (
 	gitclient "github.com/lingprism/core/internal/infrastructure/git"
 	"github.com/lingprism/core/internal/infrastructure/embedding"
 	idxclient "github.com/lingprism/core/internal/infrastructure/indexer"
+	"github.com/lingprism/core/internal/infrastructure/llm"
 	neo4jstore "github.com/lingprism/core/internal/infrastructure/neo4j"
 	opensearchstore "github.com/lingprism/core/internal/infrastructure/opensearch"
 	"github.com/lingprism/core/internal/infrastructure/mysql"
@@ -44,9 +45,12 @@ func main() {
 
 	gitClient := gitclient.NewClient(cfg.GitWorkDir)
 	indexerClient := idxclient.NewClient(cfg.IndexerBinary)
-	log.Printf(`{"level":"info","msg":"embedding config","dim":%d,"collection":%q}`, cfg.EmbeddingDim, cfg.QdrantCollection)
 	qdrantStore := qdrantclient.NewClient(cfg.QdrantURL, cfg.QdrantCollection, cfg.EmbeddingDim)
 	embedder := embedding.NewClient(cfg.EmbeddingDim)
+	log.Printf(`{"level":"info","msg":"embedding config","dim":%d,"collection":%q,"provider":%q,"hash_fallback":%v}`, cfg.EmbeddingDim, cfg.QdrantCollection, embedder.ModelName(), embedder.UsesHashFallback())
+
+	llmClient := llm.NewClient()
+	log.Printf(`{"level":"info","msg":"llm config","available":%v,"model":%q}`, llmClient.Available(), llmClient.Model())
 	openSearch := opensearchstore.NewClient(cfg.OpenSearchURL)
 	if openSearch.Enabled() {
 		if err := openSearch.EnsureIndex(context.Background()); err != nil {
@@ -75,9 +79,9 @@ func main() {
 		})
 		searchSvc = application.NewSearchService(db, qdrantStore, cfg.EmbeddingDim, embedder, openSearch, neo4jClient)
 		graphSvc = application.NewGraphQueryService(neo4jClient)
-		symbolResolveSvc = application.NewSymbolResolveService(qdrantStore, cfg.EmbeddingDim, embedder, openSearch, gitClient)
+		symbolResolveSvc = application.NewSymbolResolveService(qdrantStore, cfg.EmbeddingDim, embedder, openSearch, gitClient, llmClient)
 		archSvc = application.NewArchitectureService(db)
-		repoSyncSvc = application.NewRepoSyncService(db, gitClient)
+		repoSyncSvc = application.NewRepoSyncService(db, gitClient, indexSvc)
 	}
 
 	grpcServer, err := grpciface.Start(cfg.GRPCPort, pingSvc)

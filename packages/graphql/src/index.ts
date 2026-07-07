@@ -19,6 +19,7 @@ export {
 export type { AuthUser, LoginResponse } from '@lingprism/shared';
 export type {
   CodeLocation,
+  KnowledgeRef,
   ResolveSymbolsInput,
   SymbolStreamPhase,
   SymbolStreamStatus,

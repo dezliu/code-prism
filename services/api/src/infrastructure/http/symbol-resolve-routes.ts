@@ -1,7 +1,7 @@
 import { Router, type Response } from 'express';
 import type { ApiConfig } from '../../config.js';
 import { StreamResolveSymbolsUseCase } from '../../application/search/stream-resolve-symbols.use-case.js';
-import { CoreHttpClientImpl } from '../clients/core-http.client.js';
+import { createCoreHttpClient } from '../clients/core-http.client.js';
 import {
   createJwtMiddleware,
   type AuthenticatedRequest,
@@ -20,7 +20,7 @@ export interface SymbolResolveStreamRoutesDeps {
 export function createSymbolResolveStreamRoutes(deps: SymbolResolveStreamRoutesDeps): Router {
   const router = Router();
   const jwtMiddleware = createJwtMiddleware(deps.config);
-  const coreClient = new CoreHttpClientImpl(deps.config);
+  const coreClient = createCoreHttpClient();
   const streamResolveUseCase = new StreamResolveSymbolsUseCase(coreClient);
 
   router.post(
@@ -59,6 +59,24 @@ export function createSymbolResolveStreamRoutes(deps: SymbolResolveStreamRoutesD
 
         // 流式写入事件
         for await (const event of events) {
+          // Go Core 发送 progress 事件 {source, count, message}，
+          // 前端只识别 status 事件 {phase, message}，需要转换
+          if (event.event === 'progress') {
+            const source = event.data?.source as string ?? '';
+            const phaseMap: Record<string, string> = {
+              opensearch: 'searching_opensearch',
+              qdrant: 'searching_qdrant',
+            };
+            const phase = phaseMap[source] ?? `searching_${source}`;
+            const dataStr = JSON.stringify({
+              phase,
+              message: event.data?.message ?? '',
+            });
+            res.write(`event: status\n`);
+            res.write(`data: ${dataStr}\n\n`);
+            continue;
+          }
+
           const dataStr = JSON.stringify(event.data);
           res.write(`event: ${event.event}\n`);
           res.write(`data: ${dataStr}\n\n`);

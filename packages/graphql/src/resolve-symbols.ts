@@ -20,6 +20,15 @@ export interface CodeLocation {
   score?: number;
 }
 
+// 知识文档参考链接
+export interface KnowledgeRef {
+  docId: string;
+  title: string;
+  snippet: string;
+  score: number;
+  repoId?: string;
+}
+
 export interface ResolveSymbolsInput {
   query: string;
   className?: string;
@@ -74,6 +83,8 @@ export type SymbolStreamPhase =
   | 'parsing'
   | 'searching_opensearch'
   | 'searching_qdrant'
+  | 'searching_knowledge'
+  | 'llm_rewrite'
   | 'merging'
   | 'extracting_snippets'
   | 'results'
@@ -87,6 +98,7 @@ export interface SymbolStreamStatus {
 export interface ResolveSymbolsStreamCallbacks {
   onStatus?: (status: SymbolStreamStatus) => void;
   onResults?: (locations: CodeLocation[]) => void;
+  onReferences?: (references: KnowledgeRef[]) => void;
   onDone?: (total: number) => void;
   onError?: (message: string) => void;
 }
@@ -159,6 +171,11 @@ export function resolveSymbolsStream(
             } else if (eventName === 'results') {
               const locations = (data.locations as CodeLocation[]) ?? [];
               callbacks.onResults?.(locations);
+              // 同时返回知识文档参考
+              const references = (data.references as KnowledgeRef[]) ?? [];
+              if (references.length > 0) {
+                callbacks.onReferences?.(references);
+              }
             } else if (eventName === 'done') {
               callbacks.onDone?.(Number(data.total ?? 0));
             } else if (eventName === 'error') {

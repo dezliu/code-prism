@@ -10,6 +10,7 @@ import {
   UpdateRepoMetadataUseCase,
   UpdateRepoUseCase,
   DeleteRepoUseCase,
+  SyncAndIndexRepoUseCase,
 } from '../application/repo/repo.use-cases.js';
 import {
   ListKnowledgeBasesUseCase,
@@ -182,6 +183,7 @@ export function buildGraphQLContext(
     updateRepoMetadataUseCase: new UpdateRepoMetadataUseCase(repoRepo, core),
     updateRepoUseCase: new UpdateRepoUseCase(repoRepo),
     deleteRepoUseCase: new DeleteRepoUseCase(repoRepo),
+    syncAndIndexRepoUseCase: new SyncAndIndexRepoUseCase(core),
     listKnowledgeBasesUseCase: new ListKnowledgeBasesUseCase(knowledgeRepo),
     getKnowledgeBaseUseCase: new GetKnowledgeBaseUseCase(knowledgeRepo),
     createKnowledgeBaseUseCase: new CreateKnowledgeBaseUseCase(knowledgeRepo),

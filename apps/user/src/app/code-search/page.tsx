@@ -6,6 +6,7 @@ import {
   fetchCurrentUser,
   resolveSymbolsStream,
   type CodeLocation,
+  type KnowledgeRef,
   type SymbolStreamStatus,
 } from '@lingprism/graphql';
 import type { AuthUser } from '@lingprism/shared';
@@ -23,6 +24,7 @@ export default function CodeSearchPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<CodeLocation[]>([]);
+  const [references, setReferences] = useState<KnowledgeRef[]>([]);
   const [streamStatus, setStreamStatus] = useState<SymbolStreamStatus | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -49,6 +51,7 @@ export default function CodeSearchPage() {
     setLoading(true);
     setError(null);
     setResults([]);
+    setReferences([]);
     setStreamStatus(null);
 
     let className: string | undefined;
@@ -77,6 +80,7 @@ export default function CodeSearchPage() {
       {
         onStatus: (status) => setStreamStatus(status),
         onResults: (locations) => setResults(locations),
+        onReferences: (refs) => setReferences(refs),
         onDone: () => {
           setLoading(false);
           setStreamStatus(null);
@@ -122,24 +126,34 @@ export default function CodeSearchPage() {
         </div>
 
         <div className="user-code-search-input">
-          <input
-            type="text"
-            value={query}
-            placeholder={
-              mode === 'symbol'
-                ? '输入 Class.method 或方法名，如 OrderService.rollback'
-                : '描述你要找的功能，如：订单状态回滚的代码在哪'
-            }
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                void handleSearch();
+          <div className="user-input-wrap">
+            <textarea
+              rows={1}
+              value={query}
+              placeholder={
+                mode === 'symbol'
+                  ? '输入 Class.method 或方法名，如 OrderService.rollback'
+                  : '描述你要找的功能，如：订单状态回滚的代码在哪'
               }
-            }}
-          />
-          <button type="button" disabled={loading || !query.trim()} onClick={() => void handleSearch()}>
-            {loading ? '检索中…' : '检索'}
-          </button>
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  void handleSearch();
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="user-send-btn"
+              title="检索"
+              disabled={loading || !query.trim()}
+              onClick={() => void handleSearch()}
+            >
+              ↑
+            </button>
+          </div>
+          <p className="user-input-hint">Enter 检索 · Shift+Enter 换行</p>
         </div>
 
         {error ? <div className="user-error-text">{error}</div> : null}
@@ -148,6 +162,9 @@ export default function CodeSearchPage() {
           <div className="user-code-search-status">
             <span className="user-status-dot" />
             <span>{streamStatus.message}</span>
+            {streamStatus.phase === 'llm_rewrite' ? (
+              <span style={{ marginLeft: 8, opacity: 0.6, fontSize: 12 }}>AI 正在优化查询…</span>
+            ) : null}
           </div>
         ) : null}
 
@@ -159,10 +176,29 @@ export default function CodeSearchPage() {
             <CodeLocationCard
               key={`${loc.repoId}-${loc.qualifiedRef}-${loc.startLine}`}
               location={loc}
-              title={`${loc.methodName} 相关代码`}
+              title={`${loc.className || loc.methodName} 相关代码`}
             />
           ))}
         </div>
+
+        {/* 知识文档参考链接 */}
+        {references.length > 0 ? (
+          <div className="user-code-search-refs">
+            <div className="user-code-search-refs__title">相关文档</div>
+            {references.map((ref) => (
+              <a
+                key={ref.docId}
+                className="user-code-search-refs__item"
+                href={`/knowledge?docId=${encodeURIComponent(ref.docId)}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <span className="user-code-search-refs__name">{ref.title}</span>
+                <span className="user-code-search-refs__snippet">{ref.snippet}</span>
+              </a>
+            ))}
+          </div>
+        ) : null}
       </div>
     </UserShell>
   );

@@ -36,6 +36,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/internal/repos/arch-context", h.buildArchContext)
 	mux.HandleFunc("/internal/index/enqueue", h.enqueueIndex)
 	mux.HandleFunc("/internal/index/remove", h.removeIndex)
+	mux.HandleFunc("/internal/index/jobs", h.listIndexJobs)
 	mux.HandleFunc("/internal/search", h.handleSearch)
 	mux.HandleFunc("/internal/search/hybrid", h.handleHybridSearch)
 	mux.HandleFunc("/internal/symbols/resolve", h.handleSymbolResolve)
@@ -145,6 +146,26 @@ func (h *Handler) removeIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) listIndexJobs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	filter := application.IndexJobFilter{
+		RepoID: r.URL.Query().Get("repoId"),
+		Status: r.URL.Query().Get("status"),
+	}
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		fmt.Sscanf(raw, "%d", &filter.Limit)
+	}
+	jobs, err := h.indexSvc.ListIndexJobs(r.Context(), filter)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, jobs)
 }
 
 func (h *Handler) handleSearch(w http.ResponseWriter, r *http.Request) {

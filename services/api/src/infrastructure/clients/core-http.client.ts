@@ -20,6 +20,17 @@ export interface RemoveIndexResult {
   removed: boolean;
 }
 
+export interface IndexJob {
+  id: string;
+  repoId: string;
+  repoName: string;
+  status: string;
+  errorMessage?: string;
+  createdAt: string;
+  startedAt?: string;
+  completedAt?: string;
+}
+
 export interface SearchHit {
   type: 'code' | 'doc' | 'repo';
   title: string;
@@ -88,6 +99,7 @@ export interface CoreHttpClient {
   }): Promise<TestConnectionResult>;
   enqueueIndex(repoId: string): Promise<EnqueueIndexResult>;
   removeIndex(repoId: string): Promise<RemoveIndexResult>;
+  listIndexJobs(filter?: { repoId?: string; status?: string; limit?: number }): Promise<IndexJob[]>;
   search(query: string, repoIds?: string[]): Promise<SearchHit[]>;
   resolveSymbols(input: {
     query: string;
@@ -183,6 +195,15 @@ export class CoreHttpClientImpl implements CoreHttpClient {
     });
   }
 
+  async listIndexJobs(filter?: { repoId?: string; status?: string; limit?: number }): Promise<IndexJob[]> {
+    const params = new URLSearchParams();
+    if (filter?.repoId) params.set('repoId', filter.repoId);
+    if (filter?.status) params.set('status', filter.status);
+    if (filter?.limit) params.set('limit', String(filter.limit));
+    const qs = params.toString();
+    return this.request<IndexJob[]>(`/internal/index/jobs${qs ? '?' + qs : ''}`);
+  }
+
   async search(query: string, repoIds?: string[]): Promise<SearchHit[]> {
     const params = new URLSearchParams({ q: query });
     if (repoIds?.length) {
@@ -224,12 +245,13 @@ export class CoreHttpClientImpl implements CoreHttpClient {
     if (!response.ok) {
       throw new ApplicationError(
         `Core symbol resolve stream failed: ${response.status} ${response.statusText}`,
+        'CORE_STREAM_FAILED',
       );
     }
 
     const reader = response.body?.getReader();
     if (!reader) {
-      throw new ApplicationError('Response body is not readable');
+      throw new ApplicationError('Response body is not readable', 'CORE_STREAM_NO_BODY');
     }
 
     const decoder = new TextDecoder();
@@ -241,26 +263,56 @@ export class CoreHttpClientImpl implements CoreHttpClient {
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
 
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed || trimmed.startsWith(':')) continue;
+        // 按 SSE 规范以双换行符分块，避免在 for...of 迭代中变异数组
+        const blocks = buffer.split('\n\n');
+        buffer = blocks.pop() ?? '';
 
-          if (trimmed.startsWith('event:')) {
-            const event = trimmed.slice(6).trim();
-            // 读取下一行的 data
-            const nextLine = lines.shift();
-            if (nextLine && nextLine.startsWith('data:')) {
-              const dataStr = nextLine.slice(5).trim();
-              try {
-                const data = JSON.parse(dataStr);
-                yield { event: event as StreamEventType, data };
-              } catch (e) {
-                console.warn('Failed to parse SSE data:', dataStr);
-              }
+        for (const block of blocks) {
+          if (!block.trim()) continue;
+
+          let eventName = '';
+          const dataLines: string[] = [];
+
+          for (const line of block.split('\n')) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith(':')) continue;
+            if (trimmed.startsWith('event:')) {
+              eventName = trimmed.slice(6).trim();
+            } else if (trimmed.startsWith('data:')) {
+              dataLines.push(trimmed.slice(5).trim());
             }
+          }
+
+          if (!eventName || dataLines.length === 0) continue;
+
+          try {
+            const data = JSON.parse(dataLines.join('\n'));
+            yield { event: eventName as StreamEventType, data };
+          } catch (e) {
+            console.warn('Failed to parse SSE data:', dataLines.join('\n'));
+          }
+        }
+      }
+
+      // 处理 buffer 中残留的数据
+      if (buffer.trim()) {
+        let eventName = '';
+        const dataLines: string[] = [];
+        for (const line of buffer.split('\n')) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('event:')) {
+            eventName = trimmed.slice(6).trim();
+          } else if (trimmed.startsWith('data:')) {
+            dataLines.push(trimmed.slice(5).trim());
+          }
+        }
+        if (eventName && dataLines.length > 0) {
+          try {
+            const data = JSON.parse(dataLines.join('\n'));
+            yield { event: eventName as StreamEventType, data };
+          } catch (e) {
+            console.warn('Failed to parse trailing SSE data:', dataLines.join('\n'));
           }
         }
       }
@@ -305,7 +357,11 @@ export class CoreHttpClientImpl implements CoreHttpClient {
 }
 
 export class CoreHttpClientStub implements CoreHttpClient {
-  async testConnection(): Promise<TestConnectionResult> {
+  async testConnection(_input: {
+    url: string;
+    authType: string;
+    defaultBranch: string;
+  }): Promise<TestConnectionResult> {
     return {
       ok: true,
       languageSummary: { TypeScript: 60, Go: 40 },
@@ -322,7 +378,11 @@ export class CoreHttpClientStub implements CoreHttpClient {
     return { repoId, removed: true };
   }
 
-  async search(query: string): Promise<SearchHit[]> {
+  async listIndexJobs(_filter?: { repoId?: string; status?: string; limit?: number }): Promise<IndexJob[]> {
+    return [];
+  }
+
+  async search(query: string, _repoIds?: string[]): Promise<SearchHit[]> {
     return [
       {
         type: 'doc',
@@ -337,6 +397,8 @@ export class CoreHttpClientStub implements CoreHttpClient {
     query: string;
     className?: string;
     methodName?: string;
+    repoIds?: string[];
+    limit?: number;
   }): Promise<ResolveSymbolsResult> {
     const method = input.methodName ?? 'rollback';
     const className = input.className ?? 'OrderService';
@@ -393,6 +455,37 @@ export class CoreHttpClientStub implements CoreHttpClient {
       url: `https://example.com/${repoId}.git`,
       contextText: `## 仓库 Mock ${repoId}\n\n### 目录结构\n\`\`\`\n.\n├── src/\n└── README.md\n\`\`\``,
     };
+  }
+
+  async *resolveSymbolsStream(_input: {
+    query: string;
+    className?: string;
+    methodName?: string;
+    repoIds?: string[];
+    limit?: number;
+  }): AsyncGenerator<StreamEvent, void, unknown> {
+    yield { event: 'status', data: { phase: 'parsing', message: '正在解析查询...' } };
+    yield {
+      event: 'results',
+      data: {
+        locations: [
+          {
+            repoId: 'mock-repo',
+            repoName: 'payment-service',
+            repoUrl: 'https://example.com/payment.git',
+            filePath: 'src/order/service.go',
+            className: 'OrderService',
+            methodName: 'rollback',
+            startLine: 142,
+            endLine: 168,
+            docComment: '回滚订单状态到上一个快照',
+            qualifiedRef: 'order.OrderService#rollback',
+            snippet: 'function_declaration rollback',
+          },
+        ],
+      },
+    };
+    yield { event: 'done', data: { total: 1, message: '检索完成' } };
   }
 
   async generateArchDraft(repoId: string): Promise<{ snapshotId: string }> {

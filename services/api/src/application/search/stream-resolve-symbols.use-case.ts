@@ -11,11 +11,12 @@ export interface StreamResolveSymbolsOutput {
  * 通过 SSE (Server-Sent Events) 实现渐进式结果返回，提升用户体验：
  * 1. parsing - 解析查询参数
  * 2. searching_opensearch - OpenSearch 精确匹配检索
- * 3. searching_qdrant - Qdrant 向量语义检索
- * 4. merging - 合并和重排序结果
- * 5. extracting_snippets - 提取代码片段
- * 6. results - 最终结果
- * 7. done - 完成信号
+ * 3. searching_qdrant - Qdrant 向量语义检索（仅代码符号）
+ * 4. searching_knowledge - 知识文档参考检索
+ * 5. merging - 合并和重排序结果
+ * 6. extracting_snippets - 提取代码片段
+ * 7. results - 最终结果（locations + references）
+ * 8. done - 完成信号
  */
 export class StreamResolveSymbolsUseCase {
   constructor(private readonly core: CoreHttpClient) {}

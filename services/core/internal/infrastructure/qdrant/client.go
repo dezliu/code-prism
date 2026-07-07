@@ -108,16 +108,50 @@ func (c *Client) UpsertPoints(ctx context.Context, points []map[string]interface
 }
 
 func (c *Client) Search(ctx context.Context, vector []float32, limit int) ([]SearchHit, error) {
+	return c.searchWithFilter(ctx, vector, limit, nil)
+}
+
+// SearchCodeSymbols 搜索代码符号，在服务端过滤掉知识文档，避免知识文档抢占代码符号名额。
+func (c *Client) SearchCodeSymbols(ctx context.Context, vector []float32, limit int) ([]SearchHit, error) {
+	filter := map[string]interface{}{
+		"must_not": []map[string]interface{}{
+			{
+				"key":   "kind",
+				"match": map[string]interface{}{"value": "knowledge_doc"},
+			},
+		},
+	}
+	return c.searchWithFilter(ctx, vector, limit, filter)
+}
+
+// SearchKnowledgeDocs 仅搜索知识文档，过滤掉代码符号。
+func (c *Client) SearchKnowledgeDocs(ctx context.Context, vector []float32, limit int) ([]SearchHit, error) {
+	filter := map[string]interface{}{
+		"must": []map[string]interface{}{
+			{
+				"key":   "kind",
+				"match": map[string]interface{}{"value": "knowledge_doc"},
+			},
+		},
+	}
+	return c.searchWithFilter(ctx, vector, limit, filter)
+}
+
+func (c *Client) searchWithFilter(ctx context.Context, vector []float32, limit int, filter map[string]interface{}) ([]SearchHit, error) {
 	if limit <= 0 {
 		limit = 5
 	}
-	body, _ := json.Marshal(map[string]interface{}{
+	body := map[string]interface{}{
 		"vector":       vector,
 		"limit":        limit,
 		"with_payload": true,
-	})
+	}
+	if filter != nil {
+		body["filter"] = filter
+	}
+	reqBody, _ := json.Marshal(body)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		fmt.Sprintf("%s/collections/%s/points/search", c.baseURL, c.collection), bytes.NewReader(body))
+		fmt.Sprintf("%s/collections/%s/points/search", c.baseURL, c.collection), bytes.NewReader(reqBody))
 	if err != nil {
 		return nil, err
 	}

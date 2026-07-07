@@ -420,3 +420,78 @@ func max(a, b int) int {
 	}
 	return b
 }
+
+// IndexJob 索引任务信息
+type IndexJob struct {
+	ID           string  `json:"id"`
+	RepoID       string  `json:"repoId"`
+	RepoName     string  `json:"repoName"`
+	Status       string  `json:"status"`
+	ErrorMessage string  `json:"errorMessage,omitempty"`
+	CreatedAt    string  `json:"createdAt"`
+	StartedAt    string  `json:"startedAt,omitempty"`
+	CompletedAt  string  `json:"completedAt,omitempty"`
+}
+
+type IndexJobFilter struct {
+	RepoID string
+	Status string
+	Limit  int
+}
+
+func (s *IndexService) ListIndexJobs(ctx context.Context, filter IndexJobFilter) ([]IndexJob, error) {
+	if s.db == nil {
+		return nil, fmt.Errorf("database unavailable")
+	}
+	limit := filter.Limit
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+
+	query := `
+		SELECT j.id, j.repo_id, COALESCE(m.display_name, r.name, j.repo_id) AS repo_name,
+		       j.status, COALESCE(j.error_message, ''),
+		       j.created_at, COALESCE(j.started_at, ''), COALESCE(j.completed_at, '')
+		FROM index_jobs j
+		LEFT JOIN repos r ON r.id = j.repo_id
+		LEFT JOIN repo_metadata m ON m.repo_id = j.repo_id
+		WHERE 1=1
+	`
+	args := []interface{}{}
+	if filter.RepoID != "" {
+		query += " AND j.repo_id = ?"
+		args = append(args, filter.RepoID)
+	}
+	if filter.Status != "" {
+		query += " AND j.status = ?"
+		args = append(args, filter.Status)
+	}
+	query += " ORDER BY j.created_at DESC LIMIT ?"
+	args = append(args, limit)
+
+	rows, err := s.db.DB().QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query index jobs: %w", err)
+	}
+	defer rows.Close()
+
+	var jobs []IndexJob
+	for rows.Next() {
+		var j IndexJob
+		var startedAt, completedAt string
+		if err := rows.Scan(&j.ID, &j.RepoID, &j.RepoName, &j.Status, &j.ErrorMessage, &j.CreatedAt, &startedAt, &completedAt); err != nil {
+			return nil, fmt.Errorf("scan index job: %w", err)
+		}
+		if startedAt != "" {
+			j.StartedAt = startedAt
+		}
+		if completedAt != "" {
+			j.CompletedAt = completedAt
+		}
+		jobs = append(jobs, j)
+	}
+	if jobs == nil {
+		jobs = []IndexJob{}
+	}
+	return jobs, nil
+}
