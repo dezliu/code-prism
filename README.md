@@ -39,6 +39,16 @@
 
 详见 [AGENTS.md](./AGENTS.md) 与 [docs/PRD_业务需求文档_v1.0.md](./docs/PRD_业务需求文档_v1.0.md)。
 
+## 管理端演示
+<img width="1280" height="720" alt="admin-screen" src="https://github.com/user-attachments/assets/3ac61fa0-c042-49b4-aead-e3047deb99d1" />
+
+## 用户端演示
+<img width="1280" height="720" alt="user-screen" src="https://github.com/user-attachments/assets/a0312592-5401-4829-bdb8-e0788996f318" />
+
+## 监控端演示
+<img width="1280" height="720" alt="monitor-screen" src="https://github.com/user-attachments/assets/282459ef-ba27-47f7-8bbb-b22c566d5265" />
+
+
 ## 环境要求
 
 - **Node.js** >= 20 · **pnpm** >= 9
