@@ -1,17 +1,10 @@
 'use client';
 
 import { Button, Modal, Space, Table, Tabs, Tag } from 'antd';
-import { useEffect, useRef, useState } from 'react';
-import { gql } from '../lib/gql';
+import { useEffect, useState } from 'react';
+import type { IndexJob } from '@lingprism/graphql';
 
-interface IndexJobRow {
-  id: string;
-  repoId: string;
-  repoName: string | null;
-  status: string;
-  errorMessage: string | null;
-  createdAt: string;
-}
+export type IndexJobListTab = 'active' | 'completed' | 'failed';
 
 const STATUS_LABEL: Record<string, string> = {
   queued: '排队中',
@@ -36,69 +29,55 @@ function formatTime(value: string | null): string {
 
 export interface IndexJobListModalProps {
   open: boolean;
+  jobs: IndexJob[];
+  loading?: boolean;
+  initialTab?: IndexJobListTab;
   onClose: () => void;
+  onRefresh?: () => void;
 }
 
-export function IndexJobListModal({ open, onClose }: IndexJobListModalProps) {
-  const [jobs, setJobs] = useState<IndexJobRow[]>([]);
-  const [loading, setLoading] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const loadJobs = async () => {
-    setLoading(true);
-    try {
-      const data = await gql<{ indexJobs: IndexJobRow[] }>(`
-        query { indexJobs { id repoId repoName status errorMessage createdAt } }
-      `);
-      setJobs(data.indexJobs);
-    } catch {
-      // silent
-    } finally {
-      setLoading(false);
-    }
-  };
+export function IndexJobListModal({
+  open,
+  jobs,
+  loading,
+  initialTab = 'active',
+  onClose,
+  onRefresh,
+}: IndexJobListModalProps) {
+  const [activeTab, setActiveTab] = useState<IndexJobListTab>(initialTab);
 
   useEffect(() => {
     if (open) {
-      void loadJobs();
+      setActiveTab(initialTab);
     }
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-    };
-  }, [open]);
-
-  // 有 running/queued 任务时 5 秒轮询
-  useEffect(() => {
-    if (!open) return;
-    const hasActive = jobs.some((j) => j.status === 'running' || j.status === 'queued');
-    if (hasActive) {
-      timerRef.current = setInterval(() => void loadJobs(), 5000);
-    } else if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-    };
-  }, [open, jobs]);
+  }, [open, initialTab]);
 
   const columns = [
-    { title: '仓库', dataIndex: 'repoName', width: 160, ellipsis: true, render: (v: string | null, row: IndexJobRow) => v ?? row.repoId.slice(0, 8) },
+    {
+      title: '仓库',
+      dataIndex: 'repoName',
+      width: 160,
+      ellipsis: true,
+      render: (v: string | null, row: IndexJob) => v ?? row.repoId.slice(0, 8),
+    },
     {
       title: '状态',
       width: 100,
-      render: (_: unknown, row: IndexJobRow) => (
+      render: (_: unknown, row: IndexJob) => (
         <Tag color={STATUS_COLOR[row.status] ?? 'default'}>{STATUS_LABEL[row.status] ?? row.status}</Tag>
       ),
     },
-    { title: '错误信息', dataIndex: 'errorMessage', ellipsis: true, render: (v: string | null) => v || '-' },
-    { title: '创建时间', width: 170, render: (_: unknown, row: IndexJobRow) => formatTime(row.createdAt) },
+    {
+      title: '错误信息',
+      dataIndex: 'errorMessage',
+      ellipsis: true,
+      render: (v: string | null) => v || '-',
+    },
+    {
+      title: '创建时间',
+      width: 170,
+      render: (_: unknown, row: IndexJob) => formatTime(row.createdAt),
+    },
   ];
 
   const activeJobs = jobs.filter((j) => j.status === 'running' || j.status === 'queued');
@@ -137,13 +116,13 @@ export function IndexJobListModal({ open, onClose }: IndexJobListModalProps) {
       width={800}
       footer={(
         <Space>
-          <Button onClick={() => void loadJobs()}>刷新</Button>
+          <Button onClick={() => onRefresh?.()}>刷新</Button>
           <Button type="primary" onClick={onClose}>关闭</Button>
         </Space>
       )}
       destroyOnClose
     >
-      <Tabs items={tabItems} />
+      <Tabs activeKey={activeTab} onChange={(key) => setActiveTab(key as IndexJobListTab)} items={tabItems} />
     </Modal>
   );
 }

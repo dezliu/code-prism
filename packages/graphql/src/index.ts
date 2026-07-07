@@ -57,3 +57,8 @@ export type {
   GraphData as ArchGraphData,
   UseArchGenerateJobPollOptions,
 } from './use-arch-generate-jobs';
+export {
+  fetchIndexJobs,
+  useIndexJobPoll,
+} from './use-index-jobs';
+export type { IndexJob, UseIndexJobPollOptions } from './use-index-jobs';

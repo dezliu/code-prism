@@ -1,11 +1,11 @@
 'use client';
 
 import {
-  Button, Card, Form, Input, Modal, Select, Space, Switch, Table, Tag, message,
+  Badge, Button, Card, Form, Input, Modal, Select, Space, Switch, Table, Tag, message,
 } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import { gql } from '../../lib/gql';
-import { IndexJobListModal } from '../IndexJobListModal';
+import { useIndexJobActions } from '../IndexJobShell';
 
 interface RepoRow {
   id: string;
@@ -29,13 +29,13 @@ interface RepoRow {
 }
 
 export function ReposPanel() {
+  const jobActions = useIndexJobActions();
   const [repos, setRepos] = useState<RepoRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [metaModal, setMetaModal] = useState<RepoRow | null>(null);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [errorModal, setErrorModal] = useState<{ repoName: string; error: string } | null>(null);
-  const [indexJobModalOpen, setIndexJobModalOpen] = useState(false);
   const [syncingRepoId, setSyncingRepoId] = useState<string | null>(null);
   const [metaForm] = Form.useForm();
   const [createForm] = Form.useForm();
@@ -168,10 +168,12 @@ export function ReposPanel() {
   const syncAndIndex = async (repoId: string) => {
     setSyncingRepoId(repoId);
     try {
-      await gql(
+      const result = await gql<{ syncAndIndexRepo: { jobId: string; status: string } }>(
         `mutation($repoId: ID!) { syncAndIndexRepo(repoId: $repoId) { jobId status } }`,
         { repoId },
       );
+      jobActions?.registerActiveJob(result.syncAndIndexRepo.jobId);
+      jobActions?.refreshJobs();
       message.success('已加入索引队列');
       await loadRepos();
     } catch (error) {
@@ -231,7 +233,9 @@ export function ReposPanel() {
                   { value: 'indexed', label: '已索引' },
                 ]}
               />
-              <Button onClick={() => setIndexJobModalOpen(true)}>索引任务</Button>
+              <Badge count={jobActions?.activeCount ?? 0} size="small">
+                <Button onClick={() => jobActions?.openJobList()}>索引任务</Button>
+              </Badge>
               <Button type="primary" onClick={openCreateModal}>新增仓库</Button>
             </Space>
           )}
@@ -375,8 +379,6 @@ export function ReposPanel() {
           </Form.Item>
         </Form>
       </Modal>
-
-      <IndexJobListModal open={indexJobModalOpen} onClose={() => setIndexJobModalOpen(false)} />
 
       <Modal
         title={`同步失败：${errorModal?.repoName}`}

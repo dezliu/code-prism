@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { fetchCurrentUser, logout, type AuthUser } from '@lingprism/graphql';
 import { AdminShell } from '../components/AdminShell';
 import { DocGenerateJobShell } from '../components/DocGenerateJobShell';
+import { IndexJobShell } from '../components/IndexJobShell';
 import { ArchitecturePanel } from '../components/panels/ArchitecturePanel';
 import { AlertsPanel } from '../components/panels/AlertsPanel';
 import { KnowledgePanel } from '../components/panels/KnowledgePanel';
@@ -62,17 +63,19 @@ function AdminHomeContent() {
   };
 
   return (
-    <DocGenerateJobShell>
-      <AdminShell
-        user={user}
-        activeModule={activeModule}
-        onModuleSelect={(key) => setModule(key)}
-        onBack={() => setModule(null)}
-        onLogout={handleLogout}
-      >
-        {renderPanel()}
-      </AdminShell>
-    </DocGenerateJobShell>
+    <IndexJobShell>
+      <DocGenerateJobShell>
+        <AdminShell
+          user={user}
+          activeModule={activeModule}
+          onModuleSelect={(key) => setModule(key)}
+          onBack={() => setModule(null)}
+          onLogout={handleLogout}
+        >
+          {renderPanel()}
+        </AdminShell>
+      </DocGenerateJobShell>
+    </IndexJobShell>
   );
 }
 
