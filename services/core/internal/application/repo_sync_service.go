@@ -64,10 +64,11 @@ func (s *RepoSyncService) syncRepo(ctx context.Context, repo connectedRepo) {
 
 	remoteHash, err := s.git.HeadRemote(ctx, repo.URL, branch)
 	if err != nil {
-		log.Printf(`{"level":"warn","msg":"repo sync head remote failed","repoId":%q,"error":%q}`, repo.ID, err.Error())
+		errorMsg := err.Error()
+		log.Printf(`{"level":"warn","msg":"repo sync head remote failed","repoId":%q,"error":%q}`, repo.ID, errorMsg)
 		_, _ = s.db.DB().ExecContext(ctx, `
-			UPDATE repos SET sync_status = 'failed', updated_at = NOW() WHERE id = ?
-		`, repo.ID)
+			UPDATE repos SET sync_status = 'failed', sync_error = ?, updated_at = NOW() WHERE id = ?
+		`, errorMsg, repo.ID)
 		return
 	}
 
@@ -92,10 +93,11 @@ func (s *RepoSyncService) syncRepo(ctx context.Context, repo connectedRepo) {
 
 	syncResult, syncErr := s.git.Sync(ctx, repo.ID, repo.URL, branch)
 	if syncErr != nil {
-		log.Printf(`{"level":"warn","msg":"repo sync pull failed","repoId":%q,"error":%q}`, repo.ID, syncErr.Error())
+		errorMsg := syncErr.Error()
+		log.Printf(`{"level":"warn","msg":"repo sync pull failed","repoId":%q,"error":%q}`, repo.ID, errorMsg)
 		_, _ = s.db.DB().ExecContext(ctx, `
-			UPDATE repos SET sync_status = 'failed', updated_at = NOW() WHERE id = ?
-		`, repo.ID)
+			UPDATE repos SET sync_status = 'failed', sync_error = ?, updated_at = NOW() WHERE id = ?
+		`, errorMsg, repo.ID)
 		return
 	}
 
@@ -113,6 +115,7 @@ func (s *RepoSyncService) syncRepo(ctx context.Context, repo connectedRepo) {
 			last_commit_at = ?,
 			last_commit_summary = ?,
 			sync_status = ?,
+			sync_error = NULL,
 			last_synced_at = NOW(),
 			updated_at = NOW()
 		WHERE id = ?

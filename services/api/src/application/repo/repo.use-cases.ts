@@ -24,6 +24,7 @@ export interface RepoSummary {
   lastCommitAt: string | null;
   lastCommitSummary: string | null;
   syncStatus: string;
+  syncError: string | null;
   localCommitHash: string | null;
   remoteCommitHash: string | null;
   indexedCommitHash: string | null;
@@ -54,6 +55,7 @@ function toSummary(repo: RepoModel): RepoSummary {
     lastCommitAt: repo.lastCommitAt?.toISOString() ?? null,
     lastCommitSummary: repo.lastCommitSummary,
     syncStatus: repo.syncStatus ?? 'synced',
+    syncError: repo.syncError ?? null,
     localCommitHash: repo.localCommitHash ?? null,
     remoteCommitHash: repo.remoteCommitHash ?? null,
     indexedCommitHash: repo.indexedCommitHash ?? null,

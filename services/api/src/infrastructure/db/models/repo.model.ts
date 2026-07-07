@@ -30,6 +30,7 @@ export class RepoModel extends BaseModel {
   remoteCommitHash!: string | null;
   indexedCommitHash!: string | null;
   syncStatus!: SyncStatus;
+  syncError!: string | null;
   lastSyncedAt!: Date | null;
   createdAt!: Date;
   updatedAt!: Date;

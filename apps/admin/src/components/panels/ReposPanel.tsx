@@ -21,6 +21,7 @@ interface RepoRow {
   languageSummary: Record<string, number> | null;
   lastCommitSummary: string | null;
   syncStatus: string;
+  syncError: string | null;
   hasPendingCommit: boolean;
   remoteCommitHash: string | null;
   indexedCommitHash: string | null;
@@ -32,6 +33,7 @@ export function ReposPanel() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [metaModal, setMetaModal] = useState<RepoRow | null>(null);
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [errorModal, setErrorModal] = useState<{ repoName: string; error: string } | null>(null);
   const [metaForm] = Form.useForm();
   const [createForm] = Form.useForm();
 
@@ -43,7 +45,7 @@ export function ReposPanel() {
           repos {
             id name url connectionStatus indexStatus indexedInSearch enabled
             displayName tags businessOwner techOwner languageSummary lastCommitSummary
-            syncStatus hasPendingCommit remoteCommitHash indexedCommitHash
+            syncStatus syncError hasPendingCommit remoteCommitHash indexedCommitHash
           }
         }
       `);
@@ -247,6 +249,17 @@ export function ReposPanel() {
                     {row.hasPendingCommit && (
                       <Tag color="orange">有新 commit</Tag>
                     )}
+                    {row.syncStatus === 'failed' && row.syncError && (
+                      <Button
+                        size="small"
+                        type="link"
+                        danger
+                        onClick={() => setErrorModal({ repoName: row.displayName || row.name, error: row.syncError! })}
+                        style={{ padding: 0, fontSize: 12 }}
+                      >
+                        查看原因
+                      </Button>
+                    )}
                   </Space>
                 ),
               },
@@ -333,6 +346,18 @@ export function ReposPanel() {
             <Input />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title={`同步失败：${errorModal?.repoName}`}
+        open={!!errorModal}
+        onCancel={() => setErrorModal(null)}
+        footer={<Button onClick={() => setErrorModal(null)}>关闭</Button>}
+        width={600}
+      >
+        <div style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: 13, color: '#cf1322' }}>
+          {errorModal?.error}
+        </div>
       </Modal>
     </>
   );

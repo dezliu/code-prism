@@ -15,6 +15,7 @@ export const repoTypeDefs = /* GraphQL */ `
     lastCommitAt: String
     lastCommitSummary: String
     syncStatus: String!
+    syncError: String
     localCommitHash: String
     remoteCommitHash: String
     indexedCommitHash: String
