@@ -24,6 +24,7 @@ export interface KnowledgeDocItemSummary {
   indexedInSearch: boolean;
   content?: string;
   repoIds?: string[];
+  updatedAt?: string;
 }
 
 /** @deprecated 兼容旧 API */
@@ -50,17 +51,20 @@ function toItemSummary(
     indexedInSearch: item.indexedInSearch,
     ...(base ? { repoIds: base.repoIds } : {}),
     ...(includeContent ? { content: item.content } : {}),
+    updatedAt: item.updatedAt?.toISOString(),
   };
 }
 
-function toBaseSummary(base: KnowledgeBaseModel, includeItems = false): KnowledgeBaseSummary {
+function toBaseSummary(base: KnowledgeBaseModel, includeItems = false, isAdmin = false): KnowledgeBaseSummary {
+  // 管理员看到所有文档，普通用户只看到已发布的文档
+  const visibleItems = isAdmin ? (base.items ?? []) : (base.items ?? []).filter((item) => item.status === 'published');
   return {
     id: base.id,
     title: base.title,
     repoIds: base.repoIds,
-    itemCount: base.items?.length ?? 0,
+    itemCount: visibleItems.length,
     ...(includeItems
-      ? { items: (base.items ?? []).map((item) => toItemSummary(item, base)) }
+      ? { items: visibleItems.map((item) => toItemSummary(item, base)) }
       : {}),
   };
 }
@@ -116,21 +120,21 @@ async function resolveRepoNames(repos: RepoRepository, repoIds: string[]): Promi
 export class ListKnowledgeBasesUseCase {
   constructor(private readonly knowledge: KnowledgeRepository) {}
 
-  async execute(): Promise<KnowledgeBaseSummary[]> {
+  async execute(options?: { isAdmin?: boolean }): Promise<KnowledgeBaseSummary[]> {
     const rows = await this.knowledge.listBases();
-    return rows.map((b) => toBaseSummary(b, true));
+    return rows.map((b) => toBaseSummary(b, true, options?.isAdmin));
   }
 }
 
 export class GetKnowledgeBaseUseCase {
   constructor(private readonly knowledge: KnowledgeRepository) {}
 
-  async execute(id: string): Promise<KnowledgeBaseSummary> {
+  async execute(id: string, options?: { isAdmin?: boolean }): Promise<KnowledgeBaseSummary> {
     const base = await this.knowledge.findBaseById(id);
     if (!base) {
       throw new NotFoundError('KnowledgeBase', id);
     }
-    return toBaseSummary(base, true);
+    return toBaseSummary(base, true, options?.isAdmin);
   }
 }
 

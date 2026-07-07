@@ -105,6 +105,7 @@ export function KnowledgePanel() {
     const data = await gql<{ knowledgeBase: { items: KnowledgeDocItem[] } | null }>(`
       query($id: ID!) { knowledgeBase(id: $id) { items { id knowledgeBaseId title status docType indexedInSearch } } }
     `, { id: baseId });
+    console.log('[KnowledgePanel] 加载文档列表:', data.knowledgeBase?.items);
     setBaseItems(data.knowledgeBase?.items ?? []);
   };
 

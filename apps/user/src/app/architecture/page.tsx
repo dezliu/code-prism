@@ -15,6 +15,12 @@ interface ArchitectureItem {
   graphData: GraphData;
 }
 
+interface KnowledgeBase {
+  id: string;
+  title: string;
+  repoIds: string[];
+}
+
 async function gql<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
   const res = await fetch(GRAPHQL_ENDPOINT, {
     method: 'POST',
@@ -34,6 +40,7 @@ export default function ArchitecturePage() {
   const router = useRouter();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [items, setItems] = useState<ArchitectureItem[]>([]);
+  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [selectedRepoId, setSelectedRepoId] = useState<string>();
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
 
@@ -45,7 +52,9 @@ export default function ArchitecturePage() {
           return;
         }
         setUser(current);
-        const data = await gql<{ officialArchitectures: ArchitectureItem[] }>(
+        
+        // 加载架构图
+        const archData = await gql<{ officialArchitectures: ArchitectureItem[] }>(
           `query {
             officialArchitectures {
               id repoId repoName
@@ -53,15 +62,33 @@ export default function ArchitecturePage() {
             }
           }`,
         );
-        setItems(data.officialArchitectures);
-        if (data.officialArchitectures[0]) {
-          setSelectedRepoId(data.officialArchitectures[0].repoId);
+        setItems(archData.officialArchitectures);
+        if (archData.officialArchitectures[0]) {
+          setSelectedRepoId(archData.officialArchitectures[0].repoId);
         }
+        
+        // 加载知识库列表
+        const kbData = await gql<{ knowledgeBases: KnowledgeBase[] }>(
+          `query {
+            knowledgeBases {
+              id
+              title
+              repoIds
+              itemCount
+            }
+          }`,
+        );
+        setKnowledgeBases(kbData.knowledgeBases);
       })
       .catch(() => router.replace('/login'));
   }, [router]);
 
   const current = items.find((item) => item.repoId === selectedRepoId);
+  
+  // 查找与当前项目关联的知识库
+  const relatedKnowledgeBase = current
+    ? knowledgeBases.find((kb) => kb.repoIds.includes(current.repoId))
+    : null;
 
   const handleLogout = () => {
     logout();
@@ -98,6 +125,7 @@ export default function ArchitecturePage() {
           </select>
           <div className="user-arch-toolbar-actions">
             <a href="/">返回问答</a>
+            <a href="/docs">文档中心</a>
             <button type="button" onClick={handleLogout}>退出</button>
           </div>
         </div>
@@ -150,6 +178,27 @@ export default function ArchitecturePage() {
                 </button>
               ))}
             </div>
+            
+            {/* 查看相关文档快捷入口 */}
+            {relatedKnowledgeBase && (
+              <div style={{ marginTop: 16, textAlign: 'center' }}>
+                <a 
+                  href={`/docs?knowledgeBaseId=${relatedKnowledgeBase.id}`}
+                  style={{
+                    display: 'inline-block',
+                    padding: '8px 20px',
+                    background: '#f0f9ff',
+                    border: '1px solid #1890ff',
+                    borderRadius: 6,
+                    color: '#1890ff',
+                    textDecoration: 'none',
+                    fontSize: 14,
+                  }}
+                >
+                  📚 查看「{relatedKnowledgeBase.title}」相关文档
+                </a>
+              </div>
+            )}
           </div>
         ) : null}
       </div>

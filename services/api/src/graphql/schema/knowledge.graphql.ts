@@ -16,6 +16,7 @@ export const knowledgeTypeDefs = /* GraphQL */ `
     content: String
     indexedInSearch: Boolean!
     repoIds: [String!]
+    updatedAt: String
   }
 
   type DocGenerateJob {

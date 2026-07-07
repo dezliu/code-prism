@@ -415,16 +415,16 @@ export default function ChatPageInner() {
               <div className="user-quick-title">架构图浏览</div>
               <div className="user-quick-desc">查看官方发布的系统架构图，交互探索服务节点</div>
             </a>
+            <a href="/docs" className="user-quick-card">
+              <div className="user-quick-icon">📚</div>
+              <div className="user-quick-title">文档中心</div>
+              <div className="user-quick-desc">浏览培训文档、设计文档、ADR 等技术资料</div>
+            </a>
             <a href="/code-search" className="user-quick-card">
               <div className="user-quick-icon">⌁</div>
               <div className="user-quick-title">代码检索</div>
               <div className="user-quick-desc">语义或符号检索，返回仓库、类、方法与行号</div>
             </a>
-            <button type="button" className="user-quick-card" onClick={() => setShowChat(true)} style={{ textAlign: 'left' }}>
-              <div className="user-quick-icon">⌕</div>
-              <div className="user-quick-title">代码检索</div>
-              <div className="user-quick-desc">语义或符号检索，定位函数定义与调用关系</div>
-            </button>
           </div>
 
           <div className="user-rec-section">
@@ -444,6 +444,7 @@ export default function ChatPageInner() {
         <div className="user-chat-view">
           <div className="user-chat-toolbar">
             <a href="/architecture">架构图</a>
+            <a href="/docs">文档中心</a>
             <a href="/sessions">全部会话</a>
             <button type="button" onClick={handleLogout}>退出</button>
           </div>
