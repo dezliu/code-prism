@@ -16,6 +16,9 @@ def classify_intent(message: str) -> list[str]:
     
     if re.search(r"架构|依赖|调用链|模块|服务关系", message):
         intents.append("architecture")
+    # 通用项目/系统介绍查询
+    if re.search(r"了解|介绍|是什么|简介|概况|整体|全面", message):
+        intents.append("general")
     if re.search(r"函数|类|代码|接口|字段|表", message):
         intents.append("code")
     if re.search(r"文档|手册|ADR|培训", message):

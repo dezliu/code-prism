@@ -67,9 +67,11 @@ async def intent_classify_node(state: QaWorkflowState, deps: WorkflowDeps) -> Ro
                 "- code_location: 定位代码定义/实现位置（文件、类、方法、行号）\n"
                 "- doc: 文档/手册/ADR/培训\n"
                 "- people: 负责人/团队\n"
+                "- general: 通用问题，如了解项目概况、系统介绍、功能概述等。只要用户的问题可以被回答，就优先归为 general\n"
                 "- direct_answer: 纯闲聊或仅依赖对话历史可答\n"
-                "- clarify: 实体/repo 不明确\n"
+                "- clarify: 仅当用户的问题完全无法理解、缺少关键主语导致无法判断主题时才使用。不要因为问题宽泛就要求澄清\n"
                 "- refuse: 越权/恶意/无关\n"
+                "重要：用户问「了解某项目」「介绍某系统」等宽泛但可回答的问题时，应分类为 general 或 doc，而非 clarify。\n"
                 f"\n用户问题：{message}"
             )
             cfg = resolve_llm_config("intent")
@@ -101,8 +103,16 @@ async def intent_classify_node(state: QaWorkflowState, deps: WorkflowDeps) -> Ro
         state.refuse_reason = state.refuse_reason or "该问题无法在当前知识库范围内回答。"
         return "refuse"
 
-    if state.intent == "clarify" or (
-        state.intent_confidence < state.min_intent_confidence and state.intent not in ("direct_answer", "refuse")
+    if state.intent == "clarify":
+        state.clarify_question = state.clarify_question or (
+            "请补充更具体的信息，例如：目标仓库/服务名、模块名或文件名，以便精准检索。"
+        )
+        state.intent = "clarify"
+        return "clarify"
+
+    # general 意图是有效的分类，应走 RAG 检索，不应因置信度不足而降级为 clarify
+    if state.intent not in ("general", "direct_answer", "refuse") and (
+        state.intent_confidence < state.min_intent_confidence
     ):
         state.clarify_question = state.clarify_question or (
             "请补充更具体的信息，例如：目标仓库/服务名、模块名或文件名，以便精准检索。"
