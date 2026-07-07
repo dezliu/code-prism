@@ -186,7 +186,7 @@ export function buildGraphQLContext(
     getKnowledgeBaseUseCase: new GetKnowledgeBaseUseCase(knowledgeRepo),
     createKnowledgeBaseUseCase: new CreateKnowledgeBaseUseCase(knowledgeRepo),
     updateKnowledgeBaseUseCase: new UpdateKnowledgeBaseUseCase(knowledgeRepo),
-    deleteKnowledgeBaseUseCase: new DeleteKnowledgeBaseUseCase(knowledgeRepo),
+    deleteKnowledgeBaseUseCase: new DeleteKnowledgeBaseUseCase(knowledgeRepo, core),
     getKnowledgeDocItemUseCase: new GetKnowledgeDocItemUseCase(knowledgeRepo),
     createKnowledgeDocItemUseCase: new CreateKnowledgeDocItemUseCase(knowledgeRepo),
     updateKnowledgeDocItemUseCase: new UpdateKnowledgeDocItemUseCase(knowledgeRepo),

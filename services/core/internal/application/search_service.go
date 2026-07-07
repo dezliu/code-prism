@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/lingprism/core/internal/infrastructure/mysql"
@@ -58,10 +59,13 @@ func (s *SearchService) embedQuery(ctx context.Context, query string) []float32 
 	if s.embedder != nil {
 		vec, err := s.embedder.Embed(ctx, query)
 		if err == nil && len(vec) > 0 {
+			log.Printf(`{"level":"debug","msg":"embedder result","dim":%d,"model":%q}`, len(vec), s.embedder.ModelName())
 			return vec
 		}
 	}
-	return qdrantclient.HashEmbed(query, s.qdrantDim)
+	vec := qdrantclient.HashEmbed(query, s.qdrantDim)
+	log.Printf(`{"level":"debug","msg":"hash embed fallback","dim":%d}`, len(vec))
+	return vec
 }
 
 func (s *SearchService) Search(ctx context.Context, query string, repoIDs []string) (SearchResult, error) {

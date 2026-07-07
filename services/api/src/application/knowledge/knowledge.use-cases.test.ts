@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  DeleteKnowledgeBaseUseCase,
   GenerateKnowledgeDocContentUseCase,
   PublishKnowledgeDocUseCase,
   UpdateKnowledgeDocItemIndexUseCase,
@@ -40,6 +41,7 @@ function createMocks() {
     updateBase: vi.fn().mockResolvedValue(base),
     setItemIndexedInSearch: vi.fn().mockResolvedValue({ ...item, indexedInSearch: true }),
     findItemById: vi.fn().mockResolvedValue(item),
+    deleteBase: vi.fn().mockResolvedValue(undefined),
   } as unknown as KnowledgeRepository;
 
   const repos = {
@@ -135,5 +137,56 @@ describe('UpdateKnowledgeDocItemIndexUseCase', () => {
     await useCase.execute('item-1', true);
 
     expect(core.indexKnowledgeDoc).toHaveBeenCalledWith('item-1');
+  });
+});
+
+describe('DeleteKnowledgeBaseUseCase', () => {
+  it('should remove indexes for indexed items before deleting base', async () => {
+    const { knowledge, core } = createMocks();
+    const indexedItem = {
+      ...createMocks().item,
+      id: 'indexed-item-1',
+      indexedInSearch: true,
+    };
+    const draftItem = {
+      ...createMocks().item,
+      id: 'draft-item-2',
+      indexedInSearch: false,
+    };
+    const baseWithItems = {
+      ...createMocks().base,
+      items: [indexedItem, draftItem],
+    };
+    
+    vi.mocked(knowledge.findBaseById).mockResolvedValueOnce(baseWithItems);
+    
+    const useCase = new DeleteKnowledgeBaseUseCase(knowledge, core);
+    await useCase.execute('base-1');
+
+    // 应该只清理已纳入检索库的文档索引
+    expect(core.removeKnowledgeDoc).toHaveBeenCalledWith('indexed-item-1');
+    expect(core.removeKnowledgeDoc).not.toHaveBeenCalledWith('draft-item-2');
+    expect(knowledge.deleteBase).toHaveBeenCalledWith('base-1');
+  });
+
+  it('should continue deletion even if index removal fails', async () => {
+    const { knowledge, core } = createMocks();
+    const indexedItem = {
+      ...createMocks().item,
+      indexedInSearch: true,
+    };
+    const baseWithIndexedItem = {
+      ...createMocks().base,
+      items: [indexedItem],
+    };
+    
+    vi.mocked(knowledge.findBaseById).mockResolvedValueOnce(baseWithIndexedItem);
+    vi.mocked(core.removeKnowledgeDoc).mockRejectedValueOnce(new Error('Qdrant error'));
+    
+    const useCase = new DeleteKnowledgeBaseUseCase(knowledge, core);
+    const result = await useCase.execute('base-1');
+
+    expect(result).toBe(true);
+    expect(knowledge.deleteBase).toHaveBeenCalledWith('base-1');
   });
 });

@@ -44,6 +44,7 @@ func main() {
 
 	gitClient := gitclient.NewClient(cfg.GitWorkDir)
 	indexerClient := idxclient.NewClient(cfg.IndexerBinary)
+	log.Printf(`{"level":"info","msg":"embedding config","dim":%d,"collection":%q}`, cfg.EmbeddingDim, cfg.QdrantCollection)
 	qdrantStore := qdrantclient.NewClient(cfg.QdrantURL, cfg.QdrantCollection, cfg.EmbeddingDim)
 	embedder := embedding.NewClient(cfg.EmbeddingDim)
 	openSearch := opensearchstore.NewClient(cfg.OpenSearchURL)

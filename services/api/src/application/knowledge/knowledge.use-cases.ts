@@ -163,13 +163,31 @@ export class UpdateKnowledgeBaseUseCase {
 }
 
 export class DeleteKnowledgeBaseUseCase {
-  constructor(private readonly knowledge: KnowledgeRepository) {}
+  constructor(
+    private readonly knowledge: KnowledgeRepository,
+    private readonly core: CoreHttpClient,
+  ) {}
 
   async execute(id: string): Promise<boolean> {
     const base = await this.knowledge.findBaseById(id);
     if (!base) {
       throw new NotFoundError('KnowledgeBase', id);
     }
+    
+    // 先清理所有已纳入检索库的文档索引
+    const items = base.items ?? [];
+    for (const item of items) {
+      if (item.indexedInSearch) {
+        try {
+          await this.core.removeKnowledgeDoc(item.id);
+        } catch (error) {
+          // 记录警告但继续删除流程，避免单个索引清理失败阻塞整体删除
+          console.warn(`Failed to remove knowledge doc index: ${item.id}`, error);
+        }
+      }
+    }
+    
+    // 再删除知识库（会级联删除文档记录）
     await this.knowledge.deleteBase(id);
     return true;
   }

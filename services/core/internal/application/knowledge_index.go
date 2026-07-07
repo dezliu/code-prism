@@ -122,6 +122,12 @@ func (s *SearchService) IndexKnowledgeDoc(ctx context.Context, docID string) err
 		}
 	}
 
+	// 先确保集合存在
+	if err := s.qdrant.EnsureCollection(ctx); err != nil {
+		return err
+	}
+
+	// 再删除旧索引
 	if err := s.qdrant.DeleteByDocID(ctx, docID); err != nil {
 		return err
 	}

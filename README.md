@@ -459,6 +459,17 @@ Docker 全栈 Nginx 已占用宿主机 `8080`。本地 core 会自动回退到 `
 1. 在 `infra/docker/.env` 设置 `MYSQL_HOST_PORT=13306`（core 会优先采用）
 2. 或将根 `.env` 的 `MYSQL_DSN` / `DATABASE_URL` 改为 `...@localhost:13306/...`
 
+### Core 服务向量维度不匹配错误
+
+若遇到 `Vector dimension error: expected dim: 1024, got 2048` 或类似维度不匹配错误：
+
+1. **智谱 embedding-3 模型实际返回 2048 维向量**，需将配置从 1024 改为 2048
+2. 确认根 `.env` 和 `infra/docker/.env` 中：
+   - `ZHIPU_EMBEDDING_DIM=2048`
+   - `QDRANT_COLLECTION=lingprism_v1_zhipu_2048`
+3. 重启 Core 服务，会自动创建新的 2048 维集合
+4. 旧的 1024 维集合可手动删除（如不再需要）
+
 ### AI Worker 连不上 Redis / Qdrant
 
 AI Worker **只读取** `services/ai-worker/.env`（不读根 `.env`）。确认：
