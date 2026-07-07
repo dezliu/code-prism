@@ -4,8 +4,8 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { fetchCurrentUser, resolveSymbols, type CodeLocation } from '@lingprism/graphql';
 import type { AuthUser } from '@lingprism/shared';
-import { UserShell } from '../components/UserShell';
-import { CodeLocationCard } from '../components/CodeLocationCard';
+import { UserShell } from '../../components/UserShell';
+import { CodeLocationCard } from '../../components/CodeLocationCard';
 
 type SearchMode = 'semantic' | 'symbol';
 
@@ -43,6 +43,7 @@ export default function CodeSearchPage() {
       let className: string | undefined;
       let methodName: string | undefined;
       if (mode === 'symbol') {
+        // 符号模式：解析 Class.method 格式
         const dot = text.match(/^([A-Z][A-Za-z0-9_]*)\.([A-Za-z_]\w*)$/);
         if (dot) {
           className = dot[1];
@@ -50,6 +51,15 @@ export default function CodeSearchPage() {
         } else {
           methodName = text;
         }
+      } else {
+        // 语义模式：尝试从自然语言中提取类名/方法名
+        // 例如："OrderService 的 rollback 方法" → className="OrderService", methodName="rollback"
+        const classMatch = text.match(/\b([A-Z][A-Za-z0-9_]{3,})\b/);
+        const methodKeywords = ['rollback', 'save', 'delete', 'update', 'query', 'get', 'set', 'init', 'destroy', 'handle', 'process', 'validate'];
+        const methodMatch = text.match(new RegExp(`\\b(${methodKeywords.join('|')})\\b`, 'i'));
+        
+        if (classMatch) className = classMatch[1];
+        if (methodMatch) methodName = methodMatch[1].toLowerCase();
       }
       const locations = await resolveSymbols({
         query: text,

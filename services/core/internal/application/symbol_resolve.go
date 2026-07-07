@@ -65,6 +65,32 @@ type SymbolResolveResult struct {
 }
 
 func (s *SymbolResolveService) Resolve(ctx context.Context, input SymbolResolveInput) (SymbolResolveResult, error) {
+	// 流式版本委托给新方法
+	resultChan := make(chan StreamEvent, 10)
+	defer close(resultChan)
+
+	go func() {
+		s.ResolveStream(ctx, input, resultChan)
+	}()
+
+	// 收集所有事件并返回最终结果
+	var finalResult SymbolResolveResult
+	for event := range resultChan {
+		if event.Event == "results" {
+			finalResult = event.Data.(SymbolResolveResult)
+		}
+	}
+	return finalResult, nil
+}
+
+// StreamEvent 表示流式事件
+type StreamEvent struct {
+	Event string      `json:"event"`
+	Data  interface{} `json:"data"`
+}
+
+// ResolveStream 流式解析符号，通过 channel 发送事件
+func (s *SymbolResolveService) ResolveStream(ctx context.Context, input SymbolResolveInput, events chan<- StreamEvent) {
 	limit := input.Limit
 	if limit <= 0 {
 		limit = 5
@@ -80,12 +106,28 @@ func (s *SymbolResolveService) Resolve(ctx context.Context, input SymbolResolveI
 	// 判断是否为精确符号查询
 	isExactQuery := className != "" || methodName != ""
 
+	// 阶段 1: 发送解析状态
+	events <- StreamEvent{
+		Event: "status",
+		Data:  map[string]string{"phase": "parsing", "message": "正在解析查询..."},
+	}
+
 	candidates := map[string]CodeLocation{}
 
-	// 策略 1: OpenSearch 精确/模糊匹配
+	// 阶段 2: OpenSearch 检索
+	events <- StreamEvent{
+		Event: "status",
+		Data:  map[string]string{"phase": "searching_opensearch", "message": "正在检索代码符号库..."},
+	}
+
 	if s.openSearch != nil && s.openSearch.Enabled() {
 		docs, err := s.openSearch.SearchCodeSymbols(ctx, query, className, methodName, input.RepoIDs, limit*2)
 		if err == nil {
+			osCount := len(docs)
+			events <- StreamEvent{
+				Event: "progress",
+				Data:  map[string]interface{}{"source": "opensearch", "count": osCount, "message": fmt.Sprintf("OpenSearch 找到 %d 个候选", osCount)},
+			}
 			for _, doc := range docs {
 				loc := codeLocationFromOS(doc)
 				loc.Score = rerankScore(loc, query, className, methodName, doc.Score)
@@ -94,7 +136,12 @@ func (s *SymbolResolveService) Resolve(ctx context.Context, input SymbolResolveI
 		}
 	}
 
-	// 策略 2: Qdrant 向量语义搜索（对自然语言查询更有效）
+	// 阶段 3: Qdrant 向量语义搜索
+	events <- StreamEvent{
+		Event: "status",
+		Data:  map[string]string{"phase": "searching_qdrant", "message": "正在进行语义向量检索..."},
+	}
+
 	if s.qdrant != nil {
 		searchText := query
 		if methodName != "" {
@@ -106,6 +153,11 @@ func (s *SymbolResolveService) Resolve(ctx context.Context, input SymbolResolveI
 		vec := s.embedQuery(ctx, searchText)
 		hits, err := s.qdrant.Search(ctx, vec, limit*2)
 		if err == nil {
+			qdrantCount := len(hits)
+			events <- StreamEvent{
+				Event: "progress",
+				Data:  map[string]interface{}{"source": "qdrant", "count": qdrantCount, "message": fmt.Sprintf("Qdrant 找到 %d 个候选", qdrantCount)},
+			}
 			for _, hit := range hits {
 				payload := hit.Payload
 				if payload.RepoID == "" || payload.Kind == "knowledge_doc" {
@@ -121,10 +173,10 @@ func (s *SymbolResolveService) Resolve(ctx context.Context, input SymbolResolveI
 		}
 	}
 
-	// 策略 3: 如果是自然语言查询且上述无结果，尝试普通 search 作为兜底
-	if len(candidates) == 0 && !isExactQuery && query != "" {
-		// 这里可以调用普通的全文检索，但目前 resolve_symbols 只处理符号
-		// 暂时保留这个注释，未来可以扩展
+	// 阶段 4: 合并与重排序
+	events <- StreamEvent{
+		Event: "status",
+		Data:  map[string]string{"phase": "merging", "message": "正在合并和重排序结果..."},
 	}
 
 	locations := make([]CodeLocation, 0, len(candidates))
@@ -132,24 +184,27 @@ func (s *SymbolResolveService) Resolve(ctx context.Context, input SymbolResolveI
 		locations = append(locations, loc)
 	}
 
-	// 新增：为每个位置提取实际代码片段
+	// 阶段 5: 提取代码片段
+	events <- StreamEvent{
+		Event: "status",
+		Data:  map[string]string{"phase": "extracting_snippets", "message": "正在提取代码片段..."},
+	}
+
 	if s.git != nil {
 		for i := range locations {
 			loc := &locations[i]
 			if loc.RepoID != "" && loc.FilePath != "" && loc.StartLine > 0 && loc.EndLine > 0 {
-				// 限制最大行数，避免过大的代码片段
 				maxLines := 200
 				endLine := loc.EndLine
 				if endLine-loc.StartLine+1 > maxLines {
 					endLine = loc.StartLine + maxLines - 1
 				}
-				
+
 				codeSnippet, err := s.git.ExtractCodeSnippet(loc.RepoID, loc.FilePath, loc.StartLine, endLine)
 				if err == nil {
 					loc.CodeSnippet = codeSnippet
 				} else {
-					// 记录错误但不中断，继续处理其他位置
-					log.Printf(`{"level":"warn","msg":"extract code snippet failed","repoId":%q,"file":%q,"error":%q}`, 
+					log.Printf(`{"level":"warn","msg":"extract code snippet failed","repoId":%q,"file":%q,"error":%q}`,
 						loc.RepoID, loc.FilePath, err.Error())
 				}
 			}
@@ -161,7 +216,16 @@ func (s *SymbolResolveService) Resolve(ctx context.Context, input SymbolResolveI
 		locations = locations[:limit]
 	}
 
-	return SymbolResolveResult{Locations: locations}, nil
+	// 阶段 6: 发送最终结果
+	events <- StreamEvent{
+		Event: "results",
+		Data:  SymbolResolveResult{Locations: locations},
+	}
+
+	events <- StreamEvent{
+		Event: "done",
+		Data:  map[string]interface{}{"total": len(locations), "message": "检索完成"},
+	}
 }
 
 func (s *SymbolResolveService) embedQuery(ctx context.Context, query string) []float32 {

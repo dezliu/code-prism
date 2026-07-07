@@ -200,9 +200,13 @@ export class DeleteKnowledgeBaseUseCase {
 export class GetKnowledgeDocItemUseCase {
   constructor(private readonly knowledge: KnowledgeRepository) {}
 
-  async execute(id: string): Promise<KnowledgeDocItemSummary> {
+  async execute(id: string, options?: { isAdmin?: boolean }): Promise<KnowledgeDocItemSummary> {
     const pair = await this.knowledge.findItemWithBase(id);
     if (!pair) {
+      throw new NotFoundError('KnowledgeDocItem', id);
+    }
+    // 普通用户只能查看已发布的文档
+    if (!options?.isAdmin && pair.item.status !== 'published') {
       throw new NotFoundError('KnowledgeDocItem', id);
     }
     return toItemSummary(pair.item, pair.base, true);

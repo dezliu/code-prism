@@ -202,9 +202,10 @@ export function createResolvers() {
         }),
       knowledgeDocItem: (_: unknown, args: { id: string }, ctx: GraphQLContext) =>
         withHandler(async () => {
-          requireAdmin(ctx);
+          const auth = requireAuth(ctx);
+          const isAdmin = auth.role === 'admin' || auth.role === 'leader';
           try {
-            return await ctx.getKnowledgeDocItemUseCase.execute(args.id);
+            return await ctx.getKnowledgeDocItemUseCase.execute(args.id, { isAdmin });
           } catch {
             return null;
           }

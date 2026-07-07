@@ -39,6 +39,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/internal/search", h.handleSearch)
 	mux.HandleFunc("/internal/search/hybrid", h.handleHybridSearch)
 	mux.HandleFunc("/internal/symbols/resolve", h.handleSymbolResolve)
+	mux.HandleFunc("/internal/symbols/resolve-stream", h.handleSymbolResolveStream)
 	mux.HandleFunc("/internal/graph/neighbors", h.handleGraphNeighbors)
 	mux.HandleFunc("/internal/knowledge/index", h.indexKnowledgeDoc)
 	mux.HandleFunc("/internal/knowledge/remove", h.removeKnowledgeDoc)
@@ -209,6 +210,61 @@ func (h *Handler) handleSymbolResolve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
+}
+
+// handleSymbolResolveStream SSE 流式符号解析
+func (h *Handler) handleSymbolResolveStream(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if h.symbolResolveSvc == nil {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		fmt.Fprintf(w, "event: results\ndata: {\"locations\":[]}\n\n")
+		fmt.Fprintf(w, "event: done\ndata: {\"total\":0}\n\n")
+		return
+	}
+
+	var body application.SymbolResolveInput
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "event: error\ndata: {\"error\":\"invalid json\"}\n\n")
+		return
+	}
+
+	// 设置 SSE headers
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no") // Nginx 缓冲禁用
+
+	// 创建事件 channel
+	events := make(chan application.StreamEvent, 10)
+
+	// 在后台 goroutine 中执行流式解析
+	go func() {
+		defer close(events)
+		h.symbolResolveSvc.ResolveStream(r.Context(), body, events)
+	}()
+
+	// 将事件流式写入响应
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	for event := range events {
+		dataBytes, err := json.Marshal(event.Data)
+		if err != nil {
+			continue
+		}
+		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.Event, string(dataBytes))
+		flusher.Flush()
+	}
 }
 
 func (h *Handler) handleGraphNeighbors(w http.ResponseWriter, r *http.Request) {

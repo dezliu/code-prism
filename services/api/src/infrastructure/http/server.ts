@@ -16,6 +16,7 @@ import { createChatRoutes } from './chat-routes.js';
 import { createMcpInternalRoutes } from './mcp-internal-routes.js';
 import { createKnowledgeDocRoutes } from './knowledge-doc-routes.js';
 import { createArchitectureRoutes } from './architecture-routes.js';
+import { createSymbolResolveStreamRoutes } from './symbol-resolve-routes.js';
 import { RedisStreamCancelStore, type StreamCancelStore } from '../../infrastructure/clients/stream-cancel.store.js';
 import { createCorsMiddleware } from './cors.js';
 import { buildGraphQLContext } from '../../graphql/context-factory.js';
@@ -54,6 +55,9 @@ export function createApp(deps: HttpServerDeps): Express {
   app.use(createArchitectureRoutes({
     config: deps.config,
     cancelStore,
+  }));
+  app.use(createSymbolResolveStreamRoutes({
+    config: deps.config,
   }));
 
   return app;

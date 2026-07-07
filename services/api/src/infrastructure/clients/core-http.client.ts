@@ -49,6 +49,14 @@ export interface ResolveSymbolsResult {
   locations: CodeLocation[];
 }
 
+// SSE 流式事件类型
+export type StreamEventType = 'status' | 'progress' | 'results' | 'done' | 'error';
+
+export interface StreamEvent {
+  event: StreamEventType;
+  data: any;
+}
+
 export interface RepoDocContext {
   repoId: string;
   repoName: string;
@@ -88,6 +96,14 @@ export interface CoreHttpClient {
     repoIds?: string[];
     limit?: number;
   }): Promise<ResolveSymbolsResult>;
+  /** SSE 流式符号解析 */
+  resolveSymbolsStream(input: {
+    query: string;
+    className?: string;
+    methodName?: string;
+    repoIds?: string[];
+    limit?: number;
+  }): AsyncGenerator<StreamEvent, void, unknown>;
   indexKnowledgeDoc(docId: string): Promise<{ ok: boolean; docId: string }>;
   removeKnowledgeDoc(docId: string): Promise<{ ok: boolean; docId: string; removed: boolean }>;
   buildDocContext(repoIds: string[]): Promise<DocContextResult>;
@@ -187,6 +203,70 @@ export class CoreHttpClientImpl implements CoreHttpClient {
       method: 'POST',
       body: JSON.stringify(input),
     });
+  }
+
+  async *resolveSymbolsStream(input: {
+    query: string;
+    className?: string;
+    methodName?: string;
+    repoIds?: string[];
+    limit?: number;
+  }): AsyncGenerator<StreamEvent, void, unknown> {
+    const url = `${this.activeBaseUrl}/internal/symbols/resolve-stream`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(input),
+    });
+
+    if (!response.ok) {
+      throw new ApplicationError(
+        `Core symbol resolve stream failed: ${response.status} ${response.statusText}`,
+      );
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new ApplicationError('Response body is not readable');
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith(':')) continue;
+
+          if (trimmed.startsWith('event:')) {
+            const event = trimmed.slice(6).trim();
+            // 读取下一行的 data
+            const nextLine = lines.shift();
+            if (nextLine && nextLine.startsWith('data:')) {
+              const dataStr = nextLine.slice(5).trim();
+              try {
+                const data = JSON.parse(dataStr);
+                yield { event: event as StreamEventType, data };
+              } catch (e) {
+                console.warn('Failed to parse SSE data:', dataStr);
+              }
+            }
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
   }
 
   async indexKnowledgeDoc(docId: string): Promise<{ ok: boolean; docId: string }> {
