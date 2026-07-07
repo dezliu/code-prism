@@ -15,6 +15,10 @@ _LOCATION_HINT = re.compile(
     r"(在哪|哪里|位置|哪一行|哪个文件|代码位置|定义在哪|实现在哪| locate | where is )",
     re.IGNORECASE,
 )
+_API_CALL_HINT = re.compile(
+    r"(调用.*接口|使用.*API|什么.*方法|怎么.*调用|如何.*实现|调用的什么)",
+    re.IGNORECASE,
+)
 _REPO_HINT = re.compile(
     r"(?:在|于)\s*([A-Za-z0-9_-]+(?:-service|-repo)?)\s*(?:仓库|服务|里|中|的)?",
 )
@@ -36,6 +40,8 @@ def is_code_location_query(message: str) -> bool:
     if not text:
         return False
     if _LOCATION_HINT.search(text):
+        return True
+    if _API_CALL_HINT.search(text):
         return True
     if _CLASS_METHOD.search(text) or _QUALIFIED_HASH.search(text):
         return True

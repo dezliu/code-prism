@@ -16,6 +16,7 @@ export interface CodeLocation {
   docComment?: string;
   qualifiedRef: string;
   snippet?: string;
+  codeSnippet?: string; // 新增：实际代码片段（带行号）
   score?: number;
 }
 
@@ -57,7 +58,7 @@ export async function resolveSymbols(input: ResolveSymbolsInput): Promise<CodeLo
     `query($input: ResolveSymbolsInput!) {
       resolveSymbols(input: $input) {
         repoId repoName repoUrl filePath language packageName className methodName
-        symbolKind startLine endLine docComment qualifiedRef snippet score
+        symbolKind startLine endLine docComment qualifiedRef snippet codeSnippet score
       }
     }`,
     { input },

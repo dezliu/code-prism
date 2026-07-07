@@ -3,8 +3,10 @@ package application
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 
+	gitclient "github.com/lingprism/core/internal/infrastructure/git"
 	"github.com/lingprism/core/internal/infrastructure/embedding"
 	opensearchstore "github.com/lingprism/core/internal/infrastructure/opensearch"
 	qdrantclient "github.com/lingprism/core/internal/infrastructure/qdrant"
@@ -15,6 +17,7 @@ type SymbolResolveService struct {
 	qdrantDim  int
 	embedder   *embedding.Client
 	openSearch *opensearchstore.Client
+	git        *gitclient.Client // 新增：Git Client 用于提取代码片段
 }
 
 func NewSymbolResolveService(
@@ -22,10 +25,11 @@ func NewSymbolResolveService(
 	qdrantDim int,
 	embedder *embedding.Client,
 	openSearch *opensearchstore.Client,
+	git *gitclient.Client, // 新增参数
 ) *SymbolResolveService {
 	return &SymbolResolveService{
 		qdrant: qdrant, qdrantDim: qdrantDim,
-		embedder: embedder, openSearch: openSearch,
+		embedder: embedder, openSearch: openSearch, git: git,
 	}
 }
 
@@ -52,6 +56,7 @@ type CodeLocation struct {
 	DocComment   string  `json:"docComment,omitempty"`
 	QualifiedRef string  `json:"qualifiedRef"`
 	Snippet      string  `json:"snippet,omitempty"`
+	CodeSnippet  string  `json:"codeSnippet,omitempty"` // 新增：实际代码片段（带行号）
 	Score        float64 `json:"score,omitempty"`
 }
 
@@ -72,8 +77,12 @@ func (s *SymbolResolveService) Resolve(ctx context.Context, input SymbolResolveI
 	className := strings.TrimSpace(input.ClassName)
 	methodName := strings.TrimSpace(input.MethodName)
 
+	// 判断是否为精确符号查询
+	isExactQuery := className != "" || methodName != ""
+
 	candidates := map[string]CodeLocation{}
 
+	// 策略 1: OpenSearch 精确/模糊匹配
 	if s.openSearch != nil && s.openSearch.Enabled() {
 		docs, err := s.openSearch.SearchCodeSymbols(ctx, query, className, methodName, input.RepoIDs, limit*2)
 		if err == nil {
@@ -85,6 +94,7 @@ func (s *SymbolResolveService) Resolve(ctx context.Context, input SymbolResolveI
 		}
 	}
 
+	// 策略 2: Qdrant 向量语义搜索（对自然语言查询更有效）
 	if s.qdrant != nil {
 		searchText := query
 		if methodName != "" {
@@ -111,9 +121,39 @@ func (s *SymbolResolveService) Resolve(ctx context.Context, input SymbolResolveI
 		}
 	}
 
+	// 策略 3: 如果是自然语言查询且上述无结果，尝试普通 search 作为兜底
+	if len(candidates) == 0 && !isExactQuery && query != "" {
+		// 这里可以调用普通的全文检索，但目前 resolve_symbols 只处理符号
+		// 暂时保留这个注释，未来可以扩展
+	}
+
 	locations := make([]CodeLocation, 0, len(candidates))
 	for _, loc := range candidates {
 		locations = append(locations, loc)
+	}
+
+	// 新增：为每个位置提取实际代码片段
+	if s.git != nil {
+		for i := range locations {
+			loc := &locations[i]
+			if loc.RepoID != "" && loc.FilePath != "" && loc.StartLine > 0 && loc.EndLine > 0 {
+				// 限制最大行数，避免过大的代码片段
+				maxLines := 200
+				endLine := loc.EndLine
+				if endLine-loc.StartLine+1 > maxLines {
+					endLine = loc.StartLine + maxLines - 1
+				}
+				
+				codeSnippet, err := s.git.ExtractCodeSnippet(loc.RepoID, loc.FilePath, loc.StartLine, endLine)
+				if err == nil {
+					loc.CodeSnippet = codeSnippet
+				} else {
+					// 记录错误但不中断，继续处理其他位置
+					log.Printf(`{"level":"warn","msg":"extract code snippet failed","repoId":%q,"file":%q,"error":%q}`, 
+						loc.RepoID, loc.FilePath, err.Error())
+				}
+			}
+		}
 	}
 
 	sortLocations(locations)

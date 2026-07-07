@@ -202,3 +202,52 @@ func detectLanguages(root string) map[string]int {
 	})
 	return counts
 }
+
+// ExtractCodeSnippet extracts code snippet from a file at the given line range.
+// repoID is used to locate the local git mirror.
+func (c *Client) ExtractCodeSnippet(repoID, filePath string, startLine, endLine int) (string, error) {
+	if repoID == "" || filePath == "" {
+		return "", fmt.Errorf("repoID and filePath are required")
+	}
+	if startLine < 1 || endLine < startLine {
+		return "", fmt.Errorf("invalid line range: %d-%d", startLine, endLine)
+	}
+
+	localPath := c.LocalPath(repoID)
+	fullPath := filepath.Join(localPath, filePath)
+
+	// Check if file exists
+	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+		return "", fmt.Errorf("file not found: %s", fullPath)
+	}
+
+	// Read file content
+	content, err := os.ReadFile(fullPath)
+	if err != nil {
+		return "", fmt.Errorf("read file failed: %w", err)
+	}
+
+	// Split into lines
+	lines := strings.Split(string(content), "\n")
+	totalLines := len(lines)
+
+	// Validate line range
+	if startLine > totalLines {
+		return "", fmt.Errorf("start line %d exceeds total lines %d", startLine, totalLines)
+	}
+	if endLine > totalLines {
+		endLine = totalLines
+	}
+
+	// Extract snippet with line numbers
+	snippet := strings.Join(lines[startLine-1:endLine], "\n")
+	
+	// Add line number prefix for better readability
+	var builder strings.Builder
+	for i, line := range strings.Split(snippet, "\n") {
+		lineNum := startLine + i
+		builder.WriteString(fmt.Sprintf("%4d | %s\n", lineNum, line))
+	}
+	
+	return strings.TrimRight(builder.String(), "\n"), nil
+}

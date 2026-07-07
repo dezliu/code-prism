@@ -7,9 +7,14 @@ import re
 
 def classify_intent(message: str) -> list[str]:
     intents: list[str] = []
+    # 代码位置查询：明确询问位置
     if re.search(r"在哪|哪里|位置|哪一行|哪个文件|代码位置|定义在哪|实现在哪", message):
         intents.append("code_location")
-    if re.search(r"架构|依赖|调用|模块|服务关系", message):
+    # 代码位置查询：询问调用关系/API使用
+    elif re.search(r"调用.*接口|使用.*API|什么.*方法|怎么.*调用|如何.*实现", message):
+        intents.append("code_location")
+    
+    if re.search(r"架构|依赖|调用链|模块|服务关系", message):
         intents.append("architecture")
     if re.search(r"函数|类|代码|接口|字段|表", message):
         intents.append("code")

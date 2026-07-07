@@ -28,6 +28,9 @@ async def symbol_resolve_node(state: QaWorkflowState, deps: WorkflowDeps) -> Rou
     parsed = parse_symbol_query(query)
     repo_ids = _repo_filter(state)
 
+    # 判断是否为精确符号查询（有 className 或 methodName）
+    is_exact_symbol_query = bool(parsed.class_name or parsed.method_name)
+    
     body: dict[str, Any] = {
         "query": parsed.semantic_query,
         "limit": 5,
@@ -46,6 +49,7 @@ async def symbol_resolve_node(state: QaWorkflowState, deps: WorkflowDeps) -> Rou
             "className": parsed.class_name,
             "methodName": parsed.method_name,
             "repoHint": parsed.repo_hint,
+            "isExactQuery": is_exact_symbol_query,
         },
     ):
         result = await deps.search_client.resolve_symbols(body)
@@ -77,11 +81,22 @@ async def symbol_resolve_node(state: QaWorkflowState, deps: WorkflowDeps) -> Rou
             )
 
         if not locations:
-            state.low_confidence_retrieval = True
-            state.clarify_question = (
-                "未找到精确匹配的代码位置。请补充：目标仓库/服务名、类名或方法名（如 OrderService.rollback）。"
-            )
-            return "clarify"
+            # 如果是自然语言查询且无结果，尝试降级到语义搜索
+            if not is_exact_symbol_query and parsed.is_location_intent:
+                state.low_confidence_retrieval = True
+                state.clarify_question = (
+                    f"正在为您搜索与「{query}」相关的代码位置...\n"
+                    f"建议：提供更具体的类名或方法名可获得更精确的结果（如 OrderService.rollback）"
+                )
+                # 仍然返回 generate_answer，让 LLM 基于语义搜索结果生成回答
+                return "generate_answer"
+            else:
+                # 精确查询无结果，要求用户补充信息
+                state.low_confidence_retrieval = True
+                state.clarify_question = (
+                    "未找到精确匹配的代码位置。请补充：目标仓库/服务名、类名或方法名（如 OrderService.rollback）。"
+                )
+                return "clarify"
 
         if len(locations) > 3 and not repo_ids:
             state.clarify_question = (

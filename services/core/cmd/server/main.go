@@ -75,7 +75,7 @@ func main() {
 		})
 		searchSvc = application.NewSearchService(db, qdrantStore, cfg.EmbeddingDim, embedder, openSearch, neo4jClient)
 		graphSvc = application.NewGraphQueryService(neo4jClient)
-		symbolResolveSvc = application.NewSymbolResolveService(qdrantStore, cfg.EmbeddingDim, embedder, openSearch)
+		symbolResolveSvc = application.NewSymbolResolveService(qdrantStore, cfg.EmbeddingDim, embedder, openSearch, gitClient)
 		archSvc = application.NewArchitectureService(db)
 		repoSyncSvc = application.NewRepoSyncService(db, gitClient)
 	}

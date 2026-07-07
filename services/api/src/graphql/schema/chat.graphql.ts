@@ -34,6 +34,7 @@ export const chatTypeDefs = /* GraphQL */ `
     docComment: String
     qualifiedRef: String!
     snippet: String
+    codeSnippet: String # 新增：实际代码片段（带行号）
     score: Float
   }
 

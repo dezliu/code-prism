@@ -193,7 +193,8 @@ func (c *Client) SearchCodeSymbols(
 			map[string]interface{}{
 				"multi_match": map[string]interface{}{
 					"query":  query,
-					"fields": []string{"symbol^3", "qualifiedRef^2", "docComment", "snippet"},
+					"fields": []string{"symbol^3", "qualifiedRef^2", "docComment^2", "snippet^1.5"},
+					"type":   "best_fields",
 				},
 			},
 		)
