@@ -41,13 +41,31 @@ export function parseCorsOrigins(raw: string | undefined, nodeEnv = 'development
   return expandOriginAliases(base);
 }
 
+/** Allow *.localhost when http://localhost:<port> is configured (Docker subdomain entrypoints). */
+export function isOriginAllowed(origin: string, allowedOrigins: Set<string>): boolean {
+  if (allowedOrigins.has(origin)) {
+    return true;
+  }
+
+  try {
+    const url = new URL(origin);
+    if (!url.hostname.endsWith('.localhost')) {
+      return false;
+    }
+    const port = url.port ? `:${url.port}` : '';
+    return allowedOrigins.has(`${url.protocol}//localhost${port}`);
+  } catch {
+    return false;
+  }
+}
+
 export function createCorsMiddleware(config: ApiConfig): RequestHandler {
   const allowedOrigins = new Set(expandOriginAliases(config.corsOrigins));
 
   return (req: Request, res: Response, next: NextFunction): void => {
     const origin = req.headers.origin;
 
-    if (origin && allowedOrigins.has(origin)) {
+    if (origin && isOriginAllowed(origin, allowedOrigins)) {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Vary', 'Origin');
     }

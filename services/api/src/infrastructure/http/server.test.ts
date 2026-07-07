@@ -80,6 +80,26 @@ describe('CORS', () => {
     expect(response.status).toBe(204);
     expect(response.headers['access-control-allow-origin']).toBe('http://127.0.0.1:3000');
   });
+
+  it('should allow admin.localhost when localhost port is configured', async () => {
+    const dockerLikeApp = createApp({
+      config: {
+        ...testConfig,
+        corsOrigins: ['http://localhost:8080'],
+      },
+      cancelStore: new MemoryStreamCancelStore(),
+      usePersistence: false,
+    });
+
+    const response = await request(dockerLikeApp)
+      .options('/api/architecture/generate/stream')
+      .set('Origin', 'http://admin.localhost:8080')
+      .set('Access-Control-Request-Method', 'POST')
+      .set('Access-Control-Request-Headers', 'content-type, authorization');
+
+    expect(response.status).toBe(204);
+    expect(response.headers['access-control-allow-origin']).toBe('http://admin.localhost:8080');
+  });
 });
 
 describe('GET /health', () => {
