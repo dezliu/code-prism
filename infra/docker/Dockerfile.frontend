@@ -23,7 +23,7 @@ ENV NEXT_PUBLIC_GRAPHQL_URL=${NEXT_PUBLIC_GRAPHQL_URL}
 ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
 RUN pnpm --filter @lingprism/${APP} build
 
-FROM base AS runner
+FROM node:20-alpine AS runner
 ARG APP
 ARG APP_PORT
 WORKDIR /app
@@ -37,4 +37,6 @@ USER nextjs
 WORKDIR /app/apps/${APP}
 EXPOSE ${APP_PORT}
 ENV PORT=${APP_PORT}
-CMD ["pnpm", "start"]
+ENV HOSTNAME=0.0.0.0
+# 直接调用 next，避免运行时 corepack 从 npmjs 下载 pnpm（容器内常无出网或 IPv6 不可达）
+CMD ["./node_modules/.bin/next", "start"]
