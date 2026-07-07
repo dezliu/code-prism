@@ -100,6 +100,55 @@ func (s *IndexService) TestConnection(ctx context.Context, input TestConnectionI
 	}
 }
 
+// CloneRepoAsync triggers an asynchronous clone of the repository.
+// It returns immediately; the actual clone runs in a background goroutine.
+func (s *IndexService) CloneRepoAsync(ctx context.Context, repoID string) {
+	if s.db == nil || s.git == nil {
+		return
+	}
+	rec, err := s.loadRepo(ctx, repoID)
+	if err != nil {
+		log.Printf(`{"level":"warn","msg":"clone async: load repo failed","repoId":%q,"error":%q}`, repoID, err.Error())
+		return
+	}
+	go func() {
+		bgCtx := context.Background()
+		branch := rec.DefaultBranch
+		if branch == "" {
+			branch = "main"
+		}
+		log.Printf(`{"level":"info","msg":"clone async: start","repoId":%q,"url":%q}`, rec.ID, rec.URL)
+		syncResult, syncErr := s.git.Sync(bgCtx, rec.ID, rec.URL, branch)
+		if syncErr != nil {
+			log.Printf(`{"level":"warn","msg":"clone async: sync failed","repoId":%q,"error":%q}`, rec.ID, syncErr.Error())
+			_, _ = s.db.DB().ExecContext(bgCtx, `
+				UPDATE repos SET connection_status = 'failed', connection_error = ?, updated_at = NOW() WHERE id = ?
+			`, syncErr.Error(), rec.ID)
+			return
+		}
+		_, _ = s.db.DB().ExecContext(bgCtx, `
+			UPDATE repos SET
+				connection_status = 'connected',
+				connection_error = NULL,
+				language_summary = ?,
+				last_commit_at = ?,
+				last_commit_summary = ?,
+				local_commit_hash = ?,
+				remote_commit_hash = ?,
+				sync_status = 'synced',
+				updated_at = NOW()
+			WHERE id = ?
+		`, toJSON(syncResult.LanguageSummary), syncResult.LastCommitAt, syncResult.LastCommitSummary,
+			syncResult.HeadCommitHash, syncResult.HeadCommitHash, rec.ID)
+		log.Printf(`{"level":"info","msg":"clone async: done","repoId":%q}`, rec.ID)
+	}()
+}
+
+func toJSON(v interface{}) string {
+	b, _ := json.Marshal(v)
+	return string(b)
+}
+
 type EnqueueIndexResult struct {
 	JobID  string `json:"jobId"`
 	Status string `json:"status"`

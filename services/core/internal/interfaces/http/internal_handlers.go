@@ -32,6 +32,7 @@ func NewHandler(
 
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/internal/repos/test-connection", h.testConnection)
+	mux.HandleFunc("/internal/repos/clone-async", h.cloneAsync)
 	mux.HandleFunc("/internal/repos/doc-context", h.buildDocContext)
 	mux.HandleFunc("/internal/repos/arch-context", h.buildArchContext)
 	mux.HandleFunc("/internal/index/enqueue", h.enqueueIndex)
@@ -66,6 +67,22 @@ func (h *Handler) testConnection(w http.ResponseWriter, r *http.Request) {
 	}
 	result := h.indexSvc.TestConnection(r.Context(), input)
 	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) cloneAsync(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		RepoID string `json:"repoId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.RepoID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "repoId required"})
+		return
+	}
+	h.indexSvc.CloneRepoAsync(r.Context(), body.RepoID)
+	writeJSON(w, http.StatusAccepted, map[string]interface{}{"ok": true, "repoId": body.RepoID})
 }
 
 func (h *Handler) buildArchContext(w http.ResponseWriter, r *http.Request) {

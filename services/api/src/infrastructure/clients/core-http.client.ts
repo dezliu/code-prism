@@ -97,6 +97,7 @@ export interface CoreHttpClient {
     authType: string;
     defaultBranch: string;
   }): Promise<TestConnectionResult>;
+  cloneRepoAsync(repoId: string): Promise<{ ok: boolean; repoId: string }>;
   enqueueIndex(repoId: string): Promise<EnqueueIndexResult>;
   removeIndex(repoId: string): Promise<RemoveIndexResult>;
   listIndexJobs(filter?: { repoId?: string; status?: string; limit?: number }): Promise<IndexJob[]>;
@@ -178,6 +179,13 @@ export class CoreHttpClientImpl implements CoreHttpClient {
     return this.request('/internal/repos/test-connection', {
       method: 'POST',
       body: JSON.stringify(input),
+    });
+  }
+
+  async cloneRepoAsync(repoId: string): Promise<{ ok: boolean; repoId: string }> {
+    return this.request('/internal/repos/clone-async', {
+      method: 'POST',
+      body: JSON.stringify({ repoId }),
     });
   }
 
@@ -368,6 +376,10 @@ export class CoreHttpClientStub implements CoreHttpClient {
       lastCommitAt: new Date().toISOString(),
       lastCommitSummary: 'feat: initial commit',
     };
+  }
+
+  async cloneRepoAsync(_repoId: string): Promise<{ ok: boolean; repoId: string }> {
+    return { ok: true, repoId: _repoId };
   }
 
   async enqueueIndex(repoId: string): Promise<EnqueueIndexResult> {

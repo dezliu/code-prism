@@ -1,7 +1,7 @@
 import { GraphQLScalarType } from 'graphql';
 import type { LoginUseCase } from '../../application/auth/login.js';
 import type { GetCurrentUserUseCase } from '../../application/auth/get-current-user.js';
-import type { ListReposUseCase, CreateRepoUseCase, TestRepoConnectionUseCase, UpdateRepoMetadataUseCase, UpdateRepoUseCase, DeleteRepoUseCase, SyncAndIndexRepoUseCase } from '../../application/repo/repo.use-cases.js';
+import type { ListReposUseCase, CreateRepoUseCase, TestRepoConnectionUseCase, TestConnectionByUrlUseCase, UpdateRepoMetadataUseCase, UpdateRepoUseCase, DeleteRepoUseCase, SyncAndIndexRepoUseCase } from '../../application/repo/repo.use-cases.js';
 import type { ListKnowledgeBasesUseCase, GetKnowledgeBaseUseCase, CreateKnowledgeBaseUseCase, UpdateKnowledgeBaseUseCase, DeleteKnowledgeBaseUseCase, GetKnowledgeDocItemUseCase, CreateKnowledgeDocItemUseCase, UpdateKnowledgeDocItemUseCase, PublishKnowledgeDocItemUseCase, UpdateKnowledgeDocItemIndexUseCase, ListKnowledgeDocsUseCase, GetKnowledgeDocUseCase, CreateKnowledgeDocUseCase, UpdateKnowledgeDocUseCase, PublishKnowledgeDocUseCase, GenerateKnowledgeDocContentUseCase, GenerateTrainingDocUseCase } from '../../application/knowledge/knowledge.use-cases.js';
 import type {
   EnqueueDocGenerateJobUseCase,
@@ -66,6 +66,7 @@ export interface GraphQLContext {
   listReposUseCase: ListReposUseCase;
   createRepoUseCase: CreateRepoUseCase;
   testRepoConnectionUseCase: TestRepoConnectionUseCase;
+  testConnectionByUrlUseCase: TestConnectionByUrlUseCase;
   updateRepoMetadataUseCase: UpdateRepoMetadataUseCase;
   updateRepoUseCase: UpdateRepoUseCase;
   deleteRepoUseCase: DeleteRepoUseCase;
@@ -369,6 +370,11 @@ export function createResolvers() {
         withHandler(() => {
           requireAdmin(ctx);
           return ctx.testRepoConnectionUseCase.execute(args.repoId);
+        }),
+      testConnectionByUrl: (_: unknown, args: { input: { url: string; authType: string; defaultBranch?: string } }, ctx: GraphQLContext) =>
+        withHandler(() => {
+          requireAdmin(ctx);
+          return ctx.testConnectionByUrlUseCase.execute(args.input);
         }),
       updateRepoMetadata: (
         _: unknown,

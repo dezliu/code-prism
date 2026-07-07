@@ -44,6 +44,12 @@ export const repoTypeDefs = /* GraphQL */ `
     indexedInSearch: Boolean
   }
 
+  input TestConnectionByUrlInput {
+    url: String!
+    authType: String!
+    defaultBranch: String
+  }
+
   type TestConnectionResult {
     ok: Boolean!
     error: String
@@ -62,6 +68,7 @@ export const repoTypeDefs = /* GraphQL */ `
   extend type Mutation {
     createRepo(input: CreateRepoInput!): Repo!
     testRepoConnection(repoId: ID!): TestConnectionResult!
+    testConnectionByUrl(input: TestConnectionByUrlInput!): TestConnectionResult!
     updateRepoMetadata(repoId: ID!, input: UpdateRepoMetadataInput!): Repo!
     updateRepo(repoId: ID!, input: UpdateRepoInput!): Repo!
     deleteRepo(repoId: ID!): Boolean!

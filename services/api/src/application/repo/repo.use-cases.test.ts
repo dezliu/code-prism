@@ -73,14 +73,16 @@ function createMockRepoRepo(): RepoRepository {
 }
 
 describe('CreateRepoUseCase', () => {
-  it('creates repo and tests connection via core', async () => {
-    const useCase = new CreateRepoUseCase(createMockRepoRepo(), new CoreHttpClientStub());
+  it('creates repo with pending status and triggers async clone', async () => {
+    const core = new CoreHttpClientStub();
+    const cloneSpy = vi.spyOn(core, 'cloneRepoAsync');
+    const useCase = new CreateRepoUseCase(createMockRepoRepo(), core);
     const result = await useCase.execute({
       url: 'https://github.com/org/payment-service.git',
       authType: 'https',
     });
-    expect(result.connectionStatus).toBe('connected');
-    expect(result.languageSummary).toBeTruthy();
+    expect(result.connectionStatus).toBe('pending');
+    expect(cloneSpy).toHaveBeenCalledWith('repo-1');
   });
 });
 
@@ -92,6 +94,8 @@ describe('UpdateRepoMetadataUseCase', () => {
       url: 'https://github.com/org/payment-service.git',
       authType: 'https',
     });
+    // 模拟异步克隆完成后状态变为 connected
+    await repos.updateConnection(created.id, 'connected', { languageSummary: { TypeScript: 60 } });
     const core = new CoreHttpClientStub();
     const enqueueSpy = vi.spyOn(core, 'enqueueIndex');
     const update = new UpdateRepoMetadataUseCase(repos, core);

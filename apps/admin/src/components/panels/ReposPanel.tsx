@@ -37,6 +37,7 @@ export function ReposPanel() {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [errorModal, setErrorModal] = useState<{ repoName: string; error: string } | null>(null);
   const [syncingRepoId, setSyncingRepoId] = useState<string | null>(null);
+  const [testingConn, setTestingConn] = useState(false);
   const [metaForm] = Form.useForm();
   const [createForm] = Form.useForm();
 
@@ -82,12 +83,40 @@ export function ReposPanel() {
           },
         },
       );
-      message.success('仓库已创建并测试连接');
+      message.success('仓库已保存，正在后台克隆代码…');
       setCreateModalOpen(false);
       createForm.resetFields();
       await loadRepos();
     } catch (error) {
       message.error(error instanceof Error ? error.message : '创建失败');
+    }
+  };
+
+  const testConnectionByUrl = async () => {
+    try {
+      const values = await createForm.validateFields(['url', 'authType', 'defaultBranch']);
+      setTestingConn(true);
+      const result = await gql<{ testConnectionByUrl: { ok: boolean; error?: string } }>(
+        `mutation($input: TestConnectionByUrlInput!) {
+          testConnectionByUrl(input: $input) { ok error }
+        }`,
+        {
+          input: {
+            url: values.url,
+            authType: values.authType || 'https',
+            defaultBranch: values.defaultBranch || 'main',
+          },
+        },
+      );
+      if (result.testConnectionByUrl.ok) {
+        message.success('连接测试成功');
+      } else {
+        message.error(result.testConnectionByUrl.error ?? '连接失败');
+      }
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '测试失败');
+    } finally {
+      setTestingConn(false);
     }
   };
 
@@ -357,6 +386,7 @@ export function ReposPanel() {
           <Form.Item>
             <Space>
               <Button onClick={() => setCreateModalOpen(false)}>取消</Button>
+              <Button onClick={testConnectionByUrl} loading={testingConn}>测试连接</Button>
               <Button type="primary" htmlType="submit">保存配置</Button>
             </Space>
           </Form.Item>

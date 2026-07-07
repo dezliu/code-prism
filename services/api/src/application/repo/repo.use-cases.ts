@@ -84,19 +84,26 @@ export class CreateRepoUseCase {
       throw new ApplicationError('仓库地址不能为空', 'VALIDATION_ERROR');
     }
     const repo = await this.repos.create(input);
-    const test = await this.core.testConnection({
-      url: repo.url,
-      authType: repo.authType,
-      defaultBranch: repo.defaultBranch,
-    });
-    await this.repos.updateConnection(repo.id, test.ok ? 'connected' : 'failed', {
-      error: test.error,
-      languageSummary: test.languageSummary,
-      lastCommitAt: test.lastCommitAt ? new Date(test.lastCommitAt) : null,
-      lastCommitSummary: test.lastCommitSummary,
+    // 异步触发克隆，不阻塞响应
+    this.core.cloneRepoAsync(repo.id).catch((err) => {
+      // 静默失败，后台任务会更新状态
+      console.warn('async clone trigger failed:', err);
     });
     const updated = await this.repos.findById(repo.id);
     return toSummary(updated!);
+  }
+}
+
+export class TestConnectionByUrlUseCase {
+  constructor(private readonly core: CoreHttpClient) {}
+
+  async execute(input: { url: string; authType: string; defaultBranch?: string }): Promise<{ ok: boolean; error?: string }> {
+    const result = await this.core.testConnection({
+      url: input.url,
+      authType: input.authType,
+      defaultBranch: input.defaultBranch ?? 'main',
+    });
+    return { ok: result.ok, error: result.error };
   }
 }
 
