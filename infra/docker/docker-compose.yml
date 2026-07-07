@@ -161,6 +161,8 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      core:
+        condition: service_started
       ai-worker:
         condition: service_healthy
     environment:
@@ -170,6 +172,7 @@ services:
       DATABASE_URL: mysql://${MYSQL_USER:-lingprism}:${MYSQL_PASSWORD:-lingprism}@mysql:3306/${MYSQL_DATABASE:-lingprism}
       REDIS_URL: redis://redis:6379/0
       CORE_GRPC_ADDR: core:50051
+      CORE_HTTP_URL: http://core:8080
       AI_WORKER_URL: http://ai-worker:8001
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
@@ -218,6 +221,9 @@ services:
       INDEXER_GRPC_ADDR: indexer:50052
       INDEXER_BINARY: lingprism-indexer
       EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-zhipu}
+      GIT_WORK_DIR: /var/lib/lingprism/repos
+    volumes:
+      - core_repos_data:/var/lib/lingprism/repos
     logging: *default-logging
 
   indexer:
@@ -400,3 +406,4 @@ volumes:
   neo4j_data:
   qdrant_data:
   opensearch_data:
+  core_repos_data:

@@ -12,8 +12,9 @@ COPY services/core/ ./
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /lingprism-core ./cmd/server
 
 FROM alpine:3.20
-RUN apk add --no-cache ca-certificates wget
+RUN apk add --no-cache ca-certificates wget git
 RUN addgroup -S lingprism && adduser -S lingprism -G lingprism
+RUN mkdir -p /var/lib/lingprism/repos && chown lingprism:lingprism /var/lib/lingprism/repos
 COPY --from=builder /lingprism-core /usr/local/bin/lingprism-core
 USER lingprism
 EXPOSE 8080 50051
