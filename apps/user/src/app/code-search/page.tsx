@@ -1,8 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { fetchCurrentUser, resolveSymbols, type CodeLocation } from '@lingprism/graphql';
+import {
+  fetchCurrentUser,
+  resolveSymbolsStream,
+  type CodeLocation,
+  type SymbolStreamStatus,
+} from '@lingprism/graphql';
 import type { AuthUser } from '@lingprism/shared';
 import { UserShell } from '../../components/UserShell';
 import { CodeLocationCard } from '../../components/CodeLocationCard';
@@ -18,6 +23,8 @@ export default function CodeSearchPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<CodeLocation[]>([]);
+  const [streamStatus, setStreamStatus] = useState<SymbolStreamStatus | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     fetchCurrentUser()
@@ -34,46 +41,55 @@ export default function CodeSearchPage() {
 
   const handleSearch = async () => {
     const text = query.trim();
-    if (!text) {
-      return;
-    }
+    if (!text) return;
+
+    // 取消上一次检索
+    abortRef.current?.abort();
+
     setLoading(true);
     setError(null);
-    try {
-      let className: string | undefined;
-      let methodName: string | undefined;
-      if (mode === 'symbol') {
-        // 符号模式：解析 Class.method 格式
-        const dot = text.match(/^([A-Z][A-Za-z0-9_]*)\.([A-Za-z_]\w*)$/);
-        if (dot) {
-          className = dot[1];
-          methodName = dot[2];
-        } else {
-          methodName = text;
-        }
+    setResults([]);
+    setStreamStatus(null);
+
+    let className: string | undefined;
+    let methodName: string | undefined;
+
+    if (mode === 'symbol') {
+      // 符号模式：解析 Class.method 格式
+      const dot = text.match(/^([A-Z][A-Za-z0-9_]*)\.([A-Za-z_]\w*)$/);
+      if (dot) {
+        className = dot[1];
+        methodName = dot[2];
       } else {
-        // 语义模式：尝试从自然语言中提取类名/方法名
-        // 例如："OrderService 的 rollback 方法" → className="OrderService", methodName="rollback"
-        const classMatch = text.match(/\b([A-Z][A-Za-z0-9_]{3,})\b/);
-        const methodKeywords = ['rollback', 'save', 'delete', 'update', 'query', 'get', 'set', 'init', 'destroy', 'handle', 'process', 'validate'];
-        const methodMatch = text.match(new RegExp(`\\b(${methodKeywords.join('|')})\\b`, 'i'));
-        
-        if (classMatch) className = classMatch[1];
-        if (methodMatch) methodName = methodMatch[1].toLowerCase();
+        methodName = text;
       }
-      const locations = await resolveSymbols({
-        query: text,
-        className,
-        methodName,
-        limit: 8,
-      });
-      setResults(locations);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '检索失败');
-      setResults([]);
-    } finally {
-      setLoading(false);
+    } else {
+      // 语义模式：尝试从自然语言中提取类名/方法名
+      const classMatch = text.match(/\b([A-Z][A-Za-z0-9_]{3,})\b/);
+      const methodKeywords = ['rollback', 'save', 'delete', 'update', 'query', 'get', 'set', 'init', 'destroy', 'handle', 'process', 'validate'];
+      const methodMatch = text.match(new RegExp(`\\b(${methodKeywords.join('|')})\\b`, 'i'));
+      if (classMatch) className = classMatch[1];
+      if (methodMatch) methodName = methodMatch[1].toLowerCase();
     }
+
+    const controller = resolveSymbolsStream(
+      { query: text, className, methodName, limit: 8 },
+      {
+        onStatus: (status) => setStreamStatus(status),
+        onResults: (locations) => setResults(locations),
+        onDone: () => {
+          setLoading(false);
+          setStreamStatus(null);
+        },
+        onError: (msg) => {
+          setError(msg);
+          setResults([]);
+          setLoading(false);
+          setStreamStatus(null);
+        },
+      },
+    );
+    abortRef.current = controller;
   };
 
   if (checkingAuth || !user) {
@@ -127,6 +143,13 @@ export default function CodeSearchPage() {
         </div>
 
         {error ? <div className="user-error-text">{error}</div> : null}
+
+        {streamStatus ? (
+          <div className="user-code-search-status">
+            <span className="user-status-dot" />
+            <span>{streamStatus.message}</span>
+          </div>
+        ) : null}
 
         <div className="user-code-search-results">
           {results.length === 0 && !loading ? (

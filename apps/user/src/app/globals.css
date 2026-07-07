@@ -840,6 +840,15 @@ body {
   color: var(--user-text-muted);
 }
 
+.user-code-search-status {
+  font-size: 13px;
+  color: var(--user-text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
 .user-status-line {
   font-size: 13px;
   color: var(--user-text-muted);

@@ -4,7 +4,7 @@ export { createApolloClient, resetApolloClient } from './apollo-client';
 export { LingPrismApolloProvider } from './apollo-provider';
 export { loginWithCredentials, fetchCurrentUser, logout } from './auth-api';
 export { useChatSSE } from './use-chat-sse';
-export { resolveSymbols } from './resolve-symbols';
+export { resolveSymbols, resolveSymbolsStream } from './resolve-symbols';
 export { CHAT_PHASE_LABELS, formatChatStatusLabel } from './chat-phase-labels';
 export { useDocGenerateSSE } from './use-doc-generate-sse';
 export { useArchGenerateSSE, ARCH_PHASE_LABELS } from './use-arch-generate-sse';
@@ -17,7 +17,13 @@ export {
   useDocGenerateJobPoll,
 } from './use-doc-generate-jobs';
 export type { AuthUser, LoginResponse } from '@lingprism/shared';
-export type { CodeLocation, ResolveSymbolsInput } from './resolve-symbols';
+export type {
+  CodeLocation,
+  ResolveSymbolsInput,
+  SymbolStreamPhase,
+  SymbolStreamStatus,
+  ResolveSymbolsStreamCallbacks,
+} from './resolve-symbols';
 export type {
   ChatSSEEvent,
   ChatSSEPhase,
