@@ -173,6 +173,8 @@ export function useDocGenerateJobPoll(options: UseDocGenerateJobPollOptions = {}
           statusMapRef.current.delete(id);
         }
       }
+    } catch {
+      // Ignore transient poll failures (e.g. API restart).
     } finally {
       setLoading(false);
     }

@@ -32,9 +32,9 @@ async function main(): Promise<void> {
     // migration may not have run yet
   }
 
-  const { app, port } = await startHttpServer({ config });
+  const { httpServer, port } = await startHttpServer({ config });
 
-  const server = app.listen(port, () => {
+  httpServer.listen(port, () => {
     // eslint-disable-next-line no-console
     console.log(
       JSON.stringify({
@@ -47,7 +47,7 @@ async function main(): Promise<void> {
     );
   });
 
-  server.on('error', (error: NodeJS.ErrnoException) => {
+  httpServer.on('error', (error: NodeJS.ErrnoException) => {
     if (error.code === 'EADDRINUSE') {
       // eslint-disable-next-line no-console
       console.error(

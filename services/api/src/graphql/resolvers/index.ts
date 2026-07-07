@@ -32,6 +32,7 @@ import type {
   GenerateArchDraftUseCase,
   PublishOfficialArchitectureUseCase,
   ListAdminArchitecturesUseCase,
+  AddManagedArchitectureUseCase,
 } from '../../application/architecture/architecture.use-cases.js';
 import type {
   EnqueueArchGenerateJobUseCase,
@@ -106,6 +107,7 @@ export interface GraphQLContext {
   generateArchDraftUseCase: GenerateArchDraftUseCase;
   publishOfficialArchitectureUseCase: PublishOfficialArchitectureUseCase;
   listAdminArchitecturesUseCase: ListAdminArchitecturesUseCase;
+  addManagedArchitectureUseCase: AddManagedArchitectureUseCase;
   enqueueArchGenerateJobUseCase: EnqueueArchGenerateJobUseCase;
   listArchGenerateJobsUseCase: ListArchGenerateJobsUseCase;
   getArchGenerateJobUseCase: GetArchGenerateJobUseCase;
@@ -493,6 +495,11 @@ export function createResolvers() {
         withHandler(() => {
           const auth = requireAuth(ctx);
           return ctx.deleteChatSessionUseCase.execute(args.sessionId, auth.userId);
+        }),
+      addManagedArchitecture: (_: unknown, args: { repoId: string }, ctx: GraphQLContext) =>
+        withHandler(() => {
+          requireAdmin(ctx);
+          return ctx.addManagedArchitectureUseCase.execute(args.repoId);
         }),
       generateArchDraft: (_: unknown, args: { repoId: string }, ctx: GraphQLContext) =>
         withHandler(() => {

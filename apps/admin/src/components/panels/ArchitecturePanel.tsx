@@ -7,9 +7,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArchitectureGraphViewer, type GraphData } from '@lingprism/graph-viz';
 import {
   ARCH_PHASE_LABELS,
+  addManagedArchitecture,
   enqueueArchGenerateJob,
   useArchGenerateJobPoll,
   useArchGenerateSSE,
+  type AdminArchitectureItem,
   type ArchGenerateJob,
 } from '@lingprism/graphql';
 import { gql } from '../../lib/gql';
@@ -23,13 +25,6 @@ interface ArchitectureSummary {
   nodeCount: number;
   publishedAt: string | null;
   updatedAt: string;
-}
-
-interface AdminArchitectureItem {
-  repoId: string;
-  repoName: string | null;
-  draft: ArchitectureSummary | null;
-  official: ArchitectureSummary | null;
 }
 
 interface RepoOption {
@@ -56,6 +51,13 @@ export function ArchitecturePanel() {
   const [repos, setRepos] = useState<RepoOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [addModalOpen, setAddModalOpen] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [confirmGenerateOpen, setConfirmGenerateOpen] = useState(false);
+  const [pendingGenerateRepo, setPendingGenerateRepo] = useState<{
+    repoId: string;
+    repoName: string;
+  } | null>(null);
+  const [generatingFromConfirm, setGeneratingFromConfirm] = useState(false);
   const [jobListOpen, setJobListOpen] = useState(false);
   const [jobListTab, setJobListTab] = useState<JobListTab>('active');
   const [previewGraph, setPreviewGraph] = useState<{ title: string; data: GraphData } | null>(null);
@@ -126,7 +128,7 @@ export function ArchitecturePanel() {
     [editRepoId],
   );
 
-  const { jobs, activeCount, loading: jobsLoading, refresh: refreshJobs } = useArchGenerateJobPoll({
+  const { jobs, activeCount, loading: jobsLoading, refresh: refreshJobs, registerActiveJob } = useArchGenerateJobPoll({
     onJobFinished: handleJobFinished,
   });
 
@@ -182,24 +184,58 @@ export function ArchitecturePanel() {
     setAddModalOpen(true);
   };
 
-  const onAddGenerate = async (values: { repoId: string; mode?: 'stream' | 'background' }) => {
-    const mode = values.mode ?? 'stream';
-    if (mode === 'background') {
-      try {
-        await enqueueArchGenerateJob(values.repoId);
-        message.success('已加入后台生成队列');
-        setAddModalOpen(false);
-        addForm.resetFields();
-        void refreshJobs();
-      } catch (error) {
-        message.error(error instanceof Error ? error.message : '提交失败');
-      }
+  const onAddSubmit = async (values: { repoId: string }) => {
+    setAdding(true);
+    try {
+      const item = await addManagedArchitecture(values.repoId);
+      setItems((prev) => {
+        if (prev.some((row) => row.repoId === item.repoId)) {
+          return prev.map((row) => (row.repoId === item.repoId ? item : row));
+        }
+        return [item, ...prev];
+      });
+      setAddModalOpen(false);
+      addForm.resetFields();
+      setPendingGenerateRepo({
+        repoId: item.repoId,
+        repoName: item.repoName ?? values.repoId.slice(0, 8),
+      });
+      setConfirmGenerateOpen(true);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '添加失败');
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const closeConfirmGenerate = () => {
+    setConfirmGenerateOpen(false);
+    setPendingGenerateRepo(null);
+  };
+
+  const onConfirmGenerate = async () => {
+    if (!pendingGenerateRepo) {
       return;
     }
+    setGeneratingFromConfirm(true);
+    try {
+      const job = await enqueueArchGenerateJob(pendingGenerateRepo.repoId);
+      registerActiveJob(job.id);
+      await refreshJobs();
+      await loadItems();
+      closeConfirmGenerate();
+      message.success('已加入后台生成队列');
+      setJobListTab('active');
+      setJobListOpen(true);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '提交生成任务失败');
+    } finally {
+      setGeneratingFromConfirm(false);
+    }
+  };
 
-    setAddModalOpen(false);
-    addForm.resetFields();
-    await runStreamGenerate(values.repoId, true);
+  const onDeclineGenerate = () => {
+    closeConfirmGenerate();
   };
 
   const closeEditModal = () => {
@@ -275,9 +311,11 @@ export function ArchitecturePanel() {
 
   const onBackgroundGenerate = async (repoId: string, shouldCloseEditModal = false) => {
     try {
-      await enqueueArchGenerateJob(repoId);
+      const job = await enqueueArchGenerateJob(repoId);
+      registerActiveJob(job.id);
+      await refreshJobs();
+      await loadItems();
       message.success('已加入后台生成队列');
-      void refreshJobs();
       if (shouldCloseEditModal) {
         closeEditModal();
       }
@@ -499,41 +537,23 @@ export function ArchitecturePanel() {
         footer={(
           <Space>
             <Button onClick={() => setAddModalOpen(false)}>取消</Button>
-            <Button
-              onClick={() => {
-                addForm.setFieldValue('mode', 'background');
-                addForm.submit();
-              }}
-            >
-              后台生成
-            </Button>
-            <Button
-              type="primary"
-              loading={streaming}
-              onClick={() => {
-                addForm.setFieldValue('mode', 'stream');
-                addForm.submit();
-              }}
-            >
-              立即生成
+            <Button type="primary" loading={adding} onClick={() => addForm.submit()}>
+              添加
             </Button>
           </Space>
         )}
         destroyOnClose
       >
-        <Form form={addForm} layout="vertical" onFinish={onAddGenerate}>
-          <Form.Item name="mode" hidden initialValue="stream">
-            <Input />
-          </Form.Item>
+        <Form form={addForm} layout="vertical" onFinish={onAddSubmit}>
           <Form.Item
             name="repoId"
             label="选择代码库"
             rules={[{ required: true, message: '请选择代码库' }]}
-            extra="将从 Git 仓库同步代码并由大模型生成系统架构图"
+            extra="添加后可选择是否立即生成系统架构图"
           >
             <Select
               showSearch
-              placeholder="选择要生成架构图的代码库"
+              placeholder="选择要管理的代码库"
               optionFilterProp="label"
               options={addableRepos.map((r) => ({
                 value: r.id,
@@ -543,6 +563,28 @@ export function ArchitecturePanel() {
             />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title="生成系统架构图"
+        open={confirmGenerateOpen}
+        onCancel={onDeclineGenerate}
+        footer={(
+          <Space>
+            <Button onClick={onDeclineGenerate}>暂不生成</Button>
+            <Button type="primary" loading={generatingFromConfirm} onClick={() => void onConfirmGenerate()}>
+              是，开始生成
+            </Button>
+          </Space>
+        )}
+        destroyOnClose
+      >
+        <p>
+          「{pendingGenerateRepo?.repoName ?? ''}」已添加到架构图列表。
+        </p>
+        <p style={{ marginBottom: 0 }}>
+          是否现在生成系统架构图？生成任务可在「后台任务」中查看进度。
+        </p>
       </Modal>
 
       <Modal

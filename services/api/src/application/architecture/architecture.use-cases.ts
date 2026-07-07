@@ -5,6 +5,7 @@ import type { CoreHttpClient } from '../../infrastructure/clients/core-http.clie
 import type { AiWorkerArchClient } from '../../infrastructure/clients/ai-worker-arch.client.js';
 import type { StreamCancelStore } from '../../infrastructure/clients/stream-cancel.store.js';
 import type { GraphSnapshotRepository } from '../../infrastructure/db/repositories/graph-snapshot.repository.js';
+import type { ArchitectureManagedRepoRepository } from '../../infrastructure/db/repositories/architecture-managed-repo.repository.js';
 import { generateArchDraftEvents } from './arch-generate.orchestrator.js';
 import type { GraphData } from '../../infrastructure/db/models/graph-snapshot.model.js';
 
@@ -85,35 +86,43 @@ function toSummary(
   };
 }
 
+async function buildAdminArchitectureItem(
+  repoId: string,
+  monitor: MonitorRepository,
+  repos: RepoRepository,
+): Promise<AdminArchitectureListItem> {
+  const [draft, official, repo] = await Promise.all([
+    monitor.getDraftArchitecture(repoId),
+    monitor.getOfficialArchitecture(repoId),
+    repos.findById(repoId),
+  ]);
+  const meta = repo?.metadata as { displayName?: string } | undefined;
+  const repoName = meta?.displayName ?? repo?.name ?? null;
+  return {
+    repoId,
+    repoName,
+    draft: draft ? toSummary(draft, repoName) : null,
+    official: official ? toSummary(official, repoName) : null,
+  };
+}
+
 export class ListAdminArchitecturesUseCase {
   constructor(
     private readonly monitor: MonitorRepository,
     private readonly repos: RepoRepository,
+    private readonly managed: ArchitectureManagedRepoRepository,
   ) {}
 
   async execute(): Promise<AdminArchitectureListItem[]> {
-    const repoIds = await this.monitor.listArchitectureRepoIds();
-    const repoMap = new Map(
-      (await this.repos.listAll()).map((r) => {
-        const meta = r.metadata as { displayName?: string } | undefined;
-        return [r.id, meta?.displayName ?? r.name] as const;
-      }),
-    );
+    const managedIds = await this.managed.listRepoIds();
+    const snapshotIds = await this.monitor.listArchitectureRepoIds();
+    const orderedRepoIds = [
+      ...managedIds,
+      ...snapshotIds.filter((id) => !managedIds.includes(id)),
+    ];
 
     const items = await Promise.all(
-      repoIds.map(async (repoId) => {
-        const [draft, official] = await Promise.all([
-          this.monitor.getDraftArchitecture(repoId),
-          this.monitor.getOfficialArchitecture(repoId),
-        ]);
-        const repoName = repoMap.get(repoId) ?? null;
-        return {
-          repoId,
-          repoName,
-          draft: draft ? toSummary(draft, repoName) : null,
-          official: official ? toSummary(official, repoName) : null,
-        };
-      }),
+      orderedRepoIds.map((repoId) => buildAdminArchitectureItem(repoId, this.monitor, this.repos)),
     );
 
     return items.sort((a, b) => {
@@ -121,6 +130,24 @@ export class ListAdminArchitecturesUseCase {
       const bTime = b.draft?.updatedAt ?? b.official?.updatedAt ?? '';
       return bTime.localeCompare(aTime);
     });
+  }
+}
+
+export class AddManagedArchitectureUseCase {
+  constructor(
+    private readonly managed: ArchitectureManagedRepoRepository,
+    private readonly monitor: MonitorRepository,
+    private readonly repos: RepoRepository,
+  ) {}
+
+  async execute(repoId: string): Promise<AdminArchitectureListItem> {
+    const repo = await this.repos.findById(repoId);
+    if (!repo) {
+      throw new NotFoundError('Repo', repoId);
+    }
+
+    await this.managed.add(repoId);
+    return buildAdminArchitectureItem(repoId, this.monitor, this.repos);
   }
 }
 

@@ -37,6 +37,43 @@ export interface ArchGenerateJob {
   completedAt: string | null;
 }
 
+export interface AdminArchitectureItem {
+  repoId: string;
+  repoName: string | null;
+  draft: {
+    id: string;
+    version: number;
+    nodeCount: number;
+    updatedAt: string;
+  } | null;
+  official: {
+    id: string;
+    version: number;
+    versionNote: string | null;
+    nodeCount: number;
+    publishedAt: string | null;
+  } | null;
+}
+
+const ADMIN_ARCHITECTURE_FIELDS = `
+  repoId
+  repoName
+  draft { id version nodeCount updatedAt }
+  official { id version versionNote nodeCount publishedAt }
+`;
+
+export async function addManagedArchitecture(repoId: string): Promise<AdminArchitectureItem> {
+  const data = await graphqlRequest<{ addManagedArchitecture: AdminArchitectureItem }>(
+    `mutation($repoId: ID!) {
+      addManagedArchitecture(repoId: $repoId) {
+        ${ADMIN_ARCHITECTURE_FIELDS}
+      }
+    }`,
+    { repoId },
+  );
+  return data.addManagedArchitecture;
+}
+
 async function graphqlRequest<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
   const token = getAuthToken();
   const response = await fetch(GRAPHQL_ENDPOINT, {
@@ -168,9 +205,15 @@ export function useArchGenerateJobPoll(options: UseArchGenerateJobPollOptions = 
           statusMapRef.current.delete(id);
         }
       }
+    } catch {
+      // Ignore transient poll failures (e.g. API restart).
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  const registerActiveJob = useCallback((jobId: string) => {
+    statusMapRef.current.set(jobId, 'queued');
   }, []);
 
   useEffect(() => {
@@ -187,5 +230,5 @@ export function useArchGenerateJobPoll(options: UseArchGenerateJobPollOptions = 
 
   const activeCount = jobs.filter((job) => ACTIVE_STATUSES.has(job.status)).length;
 
-  return { jobs, activeCount, loading, refresh };
+  return { jobs, activeCount, loading, refresh, registerActiveJob };
 }

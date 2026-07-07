@@ -33,6 +33,7 @@ export type { DocGenerateJob, UseDocGenerateJobPollOptions } from './use-doc-gen
 export {
   fetchArchGenerateJobs,
   fetchArchGenerateJob,
+  addManagedArchitecture,
   enqueueArchGenerateJob,
   cancelArchGenerateJob,
   useArchGenerateJobPoll,
@@ -43,6 +44,7 @@ export type {
 } from './use-arch-generate-sse';
 export type {
   ArchGenerateJob,
+  AdminArchitectureItem,
   GraphData as ArchGraphData,
   UseArchGenerateJobPollOptions,
 } from './use-arch-generate-jobs';

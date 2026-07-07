@@ -49,6 +49,7 @@ export const architectureTypeDefs = /* GraphQL */ `
   }
 
   extend type Mutation {
+    addManagedArchitecture(repoId: ID!): AdminArchitectureItem!
     generateArchDraft(repoId: ID!): Architecture!
     publishOfficialArchitecture(repoId: ID!, versionNote: String!): Architecture!
     enqueueArchGenerateJob(repoId: ID!): ArchGenerateJob!

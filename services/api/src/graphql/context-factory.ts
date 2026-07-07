@@ -61,6 +61,7 @@ import {
   GenerateArchDraftUseCase,
   PublishOfficialArchitectureUseCase,
   ListAdminArchitecturesUseCase,
+  AddManagedArchitectureUseCase,
 } from '../application/architecture/architecture.use-cases.js';
 import {
   RunArchGenerateJobUseCase,
@@ -109,6 +110,7 @@ import {
 import { DocGenerateJobRepository } from '../infrastructure/db/repositories/doc-generate-job.repository.js';
 import { ArchGenerateJobRepository } from '../infrastructure/db/repositories/arch-generate-job.repository.js';
 import { GraphSnapshotRepository } from '../infrastructure/db/repositories/graph-snapshot.repository.js';
+import { ArchitectureManagedRepoRepository } from '../infrastructure/db/repositories/architecture-managed-repo.repository.js';
 import { extractBearerToken, verifyAccessToken } from '../infrastructure/auth/jwt.js';
 import type { GraphQLContext } from './resolvers/index.js';
 
@@ -139,6 +141,7 @@ export function buildGraphQLContext(
   const docGenerateJobRepo = new DocGenerateJobRepository();
   const archGenerateJobRepo = new ArchGenerateJobRepository();
   const graphSnapshotRepo = new GraphSnapshotRepository();
+  const architectureManagedRepo = new ArchitectureManagedRepoRepository();
   const runDocGenerateJobUseCase = new RunDocGenerateJobUseCase(
     docGenerateJobRepo,
     knowledgeRepo,
@@ -256,7 +259,16 @@ export function buildGraphQLContext(
       monitorRepo,
       repoRepo,
     ),
-    listAdminArchitecturesUseCase: new ListAdminArchitecturesUseCase(monitorRepo, repoRepo),
+    listAdminArchitecturesUseCase: new ListAdminArchitecturesUseCase(
+      monitorRepo,
+      repoRepo,
+      architectureManagedRepo,
+    ),
+    addManagedArchitectureUseCase: new AddManagedArchitectureUseCase(
+      architectureManagedRepo,
+      monitorRepo,
+      repoRepo,
+    ),
     listQaTemplatesUseCase: new ListQaTemplatesUseCase(templateRepo),
     listEnabledQaTemplatesUseCase: new ListEnabledQaTemplatesUseCase(templateRepo),
     createQaTemplateUseCase: new CreateQaTemplateUseCase(templateRepo),
