@@ -19,11 +19,30 @@ export const chatTypeDefs = /* GraphQL */ `
     ref: String
   }
 
+  type CodeLocation {
+    repoId: ID!
+    repoName: String!
+    repoUrl: String!
+    filePath: String!
+    language: String
+    packageName: String
+    className: String
+    methodName: String!
+    symbolKind: String
+    startLine: Int!
+    endLine: Int!
+    docComment: String
+    qualifiedRef: String!
+    snippet: String
+    score: Float
+  }
+
   type ChatMessage {
     id: ID!
     role: String!
     content: String!
     sources: [MessageSource!]
+    codeLocations: [CodeLocation!]
     interrupted: Boolean!
     createdAt: String!
   }

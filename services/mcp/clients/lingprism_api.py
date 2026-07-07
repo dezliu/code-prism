@@ -30,6 +30,30 @@ class LingPrismApiClient:
             resp.raise_for_status()
             return resp.json()
 
+    async def resolve_symbols(
+        self,
+        *,
+        query: str,
+        class_name: str | None = None,
+        method_name: str | None = None,
+        repo_ids: list[str] | None = None,
+        limit: int = 5,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"query": query, "limit": limit}
+        if class_name:
+            body["className"] = class_name
+        if method_name:
+            body["methodName"] = method_name
+        if repo_ids:
+            body["repoIds"] = repo_ids
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                f"{self._core_base_url()}/internal/symbols/resolve",
+                json=body,
+            )
+            resp.raise_for_status()
+            return resp.json()
+
     async def get_architecture_draft(self, repo_id: str) -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(

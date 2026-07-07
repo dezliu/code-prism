@@ -58,9 +58,19 @@ def _extract_text(chunk: Any) -> str:
     return str(content) if content is not None else ""
 
 
+def _format_code_locations(locations: list[dict[str, Any]]) -> str:
+    if not locations:
+        return "（无）"
+    import json
+
+    return json.dumps(locations, ensure_ascii=False, indent=2)
+
+
 def _build_generate_prompt(state: QaWorkflowState) -> str:
     context_lines = _format_context_lines(state.rag_hits)
     graph_lines = _format_context_lines(state.graph_hits)
+    location_json = _format_code_locations(state.code_locations)
+    has_context = bool(context_lines or graph_lines or state.code_locations)
 
     history_lines = []
     for msg in state.recent_messages[-4:]:
@@ -90,6 +100,8 @@ def _build_generate_prompt(state: QaWorkflowState) -> str:
         f"检索过程（共 {len(state.retrieval_log)} 轮）：\n{retrieval_section}\n\n"
         "代码/文档检索上下文：\n"
         f"{chr(10).join(context_lines) if context_lines else '（无）'}\n\n"
+        "已解析的代码位置（结构化，禁止修改行号/类名/方法名）：\n"
+        f"{location_json}\n\n"
         "图谱关系上下文：\n"
         f"{chr(10).join(graph_lines) if graph_lines else '（无）'}\n\n"
         "对话历史：\n"
@@ -100,6 +112,12 @@ def _build_generate_prompt(state: QaWorkflowState) -> str:
         note = ""
         if state.low_confidence_retrieval:
             note = "注意：检索相关度偏低，以下回答基于有限上下文，请结合来源文档核实。\n\n"
+        if state.intent == "code_location" and state.code_locations:
+            note += (
+                "注意：用户询问代码位置。请用 1-2 句话说明该功能做什么（基于 docComment/snippet），"
+                "不要重复列出文件路径/行号/类名（前端会展示结构化卡片）。"
+                "禁止编造上下文中不存在的行号或符号名。\n\n"
+            )
         return base + note + f"用户问题：{state.resolved_message or state.message}"
     return (
         base
@@ -113,7 +131,7 @@ async def generate_answer_node(state: QaWorkflowState, deps: WorkflowDeps) -> Ro
     deps.emit("step", {"node": "generate_answer", "label": "生成回答"})
 
     context_lines = _format_context_lines(state.rag_hits)
-    has_context = bool(context_lines or state.graph_hits)
+    has_context = bool(context_lines or state.graph_hits or state.code_locations)
     model = deps.qa_model
     cfg = resolve_llm_config("qa")
 
@@ -124,10 +142,20 @@ async def generate_answer_node(state: QaWorkflowState, deps: WorkflowDeps) -> Ro
     ):
         if isinstance(model, PlaceholderChatModel):
             if has_context:
+                parts = []
+                if state.code_locations:
+                    parts.append("已定位以下代码位置（详见下方卡片）：")
+                    for loc in state.code_locations[:3]:
+                        parts.append(
+                            f"- {loc.get('repoName', '')} / {loc.get('qualifiedRef', '')} "
+                            f"({loc.get('filePath', '')}:{loc.get('startLine', '')})"
+                        )
+                else:
+                    parts.append("根据知识库检索结果，整理如下：")
+                    parts.extend(context_lines[:5])
                 fallback = (
                     f"关于「{state.resolved_message or state.message}」：\n\n"
-                    "根据知识库检索结果，整理如下：\n\n"
-                    + "\n".join(context_lines[:5])
+                    + "\n".join(parts)
                     + "\n\n"
                     "（当前为占位模式，配置 ZHIPU_API_KEY 后可获得更完整的 AI 分析。）"
                 )

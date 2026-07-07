@@ -54,6 +54,7 @@ import type {
   UpdateAlertRuleUseCase,
   DeleteAlertRuleUseCase,
 } from '../../application/alert/alert.use-cases.js';
+import type { ResolveSymbolsUseCase } from '../../application/search/resolve-symbols.use-case.js';
 import { ApplicationError } from '../../domain/errors.js';
 import type { JwtPayload } from '../../infrastructure/auth/jwt.js';
 
@@ -122,6 +123,7 @@ export interface GraphQLContext {
   createAlertRuleUseCase: CreateAlertRuleUseCase;
   updateAlertRuleUseCase: UpdateAlertRuleUseCase;
   deleteAlertRuleUseCase: DeleteAlertRuleUseCase;
+  resolveSymbolsUseCase: ResolveSymbolsUseCase;
 }
 
 function requireAuth(ctx: GraphQLContext) {
@@ -246,6 +248,23 @@ export function createResolvers() {
         withHandler(() => {
           const auth = requireAuth(ctx);
           return ctx.getChatMessagesUseCase.execute(args.sessionId, auth.userId);
+        }),
+      resolveSymbols: (
+        _: unknown,
+        args: {
+          input: {
+            query: string;
+            className?: string;
+            methodName?: string;
+            repoIds?: string[];
+            limit?: number;
+          };
+        },
+        ctx: GraphQLContext,
+      ) =>
+        withHandler(() => {
+          requireAuth(ctx);
+          return ctx.resolveSymbolsUseCase.execute(args.input);
         }),
       indexJobs: (_: unknown, __: unknown, ctx: GraphQLContext) =>
         withHandler(() => {

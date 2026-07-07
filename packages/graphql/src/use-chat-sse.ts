@@ -4,6 +4,9 @@ import { useCallback, useRef, useState } from 'react';
 import { API_BASE_URL } from './constants';
 import { getAuthToken } from '@lingprism/shared';
 import { CHAT_PHASE_LABELS } from './chat-phase-labels';
+import type { CodeLocation } from './resolve-symbols';
+
+export type { CodeLocation };
 
 export type ChatSSEPhase =
   | 'security'
@@ -49,6 +52,7 @@ export interface UseChatSSEReturn {
   error: string | null;
   interrupted: boolean;
   sources: ChatSource[];
+  codeLocations: CodeLocation[];
   templateHints: ChatTemplateHint[];
   sessionInfo: ChatSessionInfo | null;
   send: (message: string, sessionId?: string) => Promise<void>;
@@ -92,6 +96,7 @@ export function useChatSSE(): UseChatSSEReturn {
   const [error, setError] = useState<string | null>(null);
   const [interrupted, setInterrupted] = useState(false);
   const [sources, setSources] = useState<ChatSource[]>([]);
+  const [codeLocations, setCodeLocations] = useState<CodeLocation[]>([]);
   const [templateHints, setTemplateHints] = useState<ChatTemplateHint[]>([]);
   const [sessionInfo, setSessionInfo] = useState<ChatSessionInfo | null>(null);
 
@@ -104,6 +109,7 @@ export function useChatSSE(): UseChatSSEReturn {
     setError(null);
     setInterrupted(false);
     setSources([]);
+    setCodeLocations([]);
     setTemplateHints([]);
     setSessionInfo(null);
     streamIdRef.current = null;
@@ -223,6 +229,27 @@ export function useChatSSE(): UseChatSSEReturn {
             } else if (event === 'token') {
               const text = String(data.text ?? '');
               setContent((prev) => prev + text);
+            } else if (event === 'code_location') {
+              setCodeLocations((prev) => [
+                ...prev,
+                {
+                  repoId: String(data.repoId ?? ''),
+                  repoName: String(data.repoName ?? ''),
+                  repoUrl: String(data.repoUrl ?? ''),
+                  filePath: String(data.filePath ?? ''),
+                  language: data.language ? String(data.language) : undefined,
+                  packageName: data.packageName ? String(data.packageName) : undefined,
+                  className: data.className ? String(data.className) : undefined,
+                  methodName: String(data.methodName ?? data.symbol ?? ''),
+                  symbolKind: data.symbolKind ? String(data.symbolKind) : undefined,
+                  startLine: Number(data.startLine ?? 0),
+                  endLine: Number(data.endLine ?? 0),
+                  docComment: data.docComment ? String(data.docComment) : undefined,
+                  qualifiedRef: String(data.qualifiedRef ?? ''),
+                  snippet: data.snippet ? String(data.snippet) : undefined,
+                  score: data.score != null ? Number(data.score) : undefined,
+                },
+              ]);
             } else if (event === 'source') {
               setSources((prev) => [
                 ...prev,
@@ -271,6 +298,7 @@ export function useChatSSE(): UseChatSSEReturn {
     error,
     interrupted,
     sources,
+    codeLocations,
     templateHints,
     sessionInfo,
     send,

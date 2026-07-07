@@ -27,6 +27,28 @@ export interface SearchHit {
   ref?: string;
 }
 
+export interface CodeLocation {
+  repoId: string;
+  repoName: string;
+  repoUrl: string;
+  filePath: string;
+  language?: string;
+  packageName?: string;
+  className?: string;
+  methodName: string;
+  symbolKind?: string;
+  startLine: number;
+  endLine: number;
+  docComment?: string;
+  qualifiedRef: string;
+  snippet?: string;
+  score?: number;
+}
+
+export interface ResolveSymbolsResult {
+  locations: CodeLocation[];
+}
+
 export interface RepoDocContext {
   repoId: string;
   repoName: string;
@@ -59,6 +81,13 @@ export interface CoreHttpClient {
   enqueueIndex(repoId: string): Promise<EnqueueIndexResult>;
   removeIndex(repoId: string): Promise<RemoveIndexResult>;
   search(query: string, repoIds?: string[]): Promise<SearchHit[]>;
+  resolveSymbols(input: {
+    query: string;
+    className?: string;
+    methodName?: string;
+    repoIds?: string[];
+    limit?: number;
+  }): Promise<ResolveSymbolsResult>;
   indexKnowledgeDoc(docId: string): Promise<{ ok: boolean; docId: string }>;
   removeKnowledgeDoc(docId: string): Promise<{ ok: boolean; docId: string; removed: boolean }>;
   buildDocContext(repoIds: string[]): Promise<DocContextResult>;
@@ -147,6 +176,19 @@ export class CoreHttpClientImpl implements CoreHttpClient {
     return data.hits;
   }
 
+  async resolveSymbols(input: {
+    query: string;
+    className?: string;
+    methodName?: string;
+    repoIds?: string[];
+    limit?: number;
+  }): Promise<ResolveSymbolsResult> {
+    return this.request<ResolveSymbolsResult>('/internal/symbols/resolve', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
   async indexKnowledgeDoc(docId: string): Promise<{ ok: boolean; docId: string }> {
     return this.request('/internal/knowledge/index', {
       method: 'POST',
@@ -209,6 +251,32 @@ export class CoreHttpClientStub implements CoreHttpClient {
         ref: 'doc-mock-1',
       },
     ];
+  }
+
+  async resolveSymbols(input: {
+    query: string;
+    className?: string;
+    methodName?: string;
+  }): Promise<ResolveSymbolsResult> {
+    const method = input.methodName ?? 'rollback';
+    const className = input.className ?? 'OrderService';
+    return {
+      locations: [
+        {
+          repoId: 'mock-repo',
+          repoName: 'payment-service',
+          repoUrl: 'https://example.com/payment.git',
+          filePath: 'src/order/service.go',
+          className,
+          methodName: method,
+          startLine: 142,
+          endLine: 168,
+          docComment: '回滚订单状态到上一个快照',
+          qualifiedRef: `order.${className}#${method}`,
+          snippet: `function_declaration ${method}`,
+        },
+      ],
+    };
   }
 
   async indexKnowledgeDoc(docId: string): Promise<{ ok: boolean; docId: string }> {

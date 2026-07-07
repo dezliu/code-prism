@@ -1,7 +1,7 @@
 import { NotFoundError } from '../../domain/errors.js';
 import { ChatRepository } from '../../infrastructure/db/repositories/chat.repository.js';
 import type { ContextAnchor } from '../../infrastructure/db/models/chat-session.model.js';
-import type { MessageSource } from '../../infrastructure/db/models/chat-message.model.js';
+import type { MessageSource, CodeLocationRecord } from '../../infrastructure/db/models/chat-message.model.js';
 import { deriveSessionTitle, isDefaultSessionTitle } from './session-title.js';
 
 export interface ChatSessionSummary {
@@ -16,6 +16,7 @@ export interface ChatMessageSummary {
   role: string;
   content: string;
   sources: MessageSource[] | null;
+  codeLocations: CodeLocationRecord[] | null;
   interrupted: boolean;
   createdAt: string;
 }
@@ -91,6 +92,7 @@ export class GetChatMessagesUseCase {
       role: m.role,
       content: m.content,
       sources: m.sources,
+      codeLocations: m.codeLocations,
       interrupted: m.interrupted,
       createdAt: m.createdAt.toISOString(),
     }));
@@ -106,6 +108,7 @@ export class PersistChatMessageUseCase {
     role: 'user' | 'assistant';
     content: string;
     sources?: MessageSource[];
+    codeLocations?: CodeLocationRecord[];
     interrupted?: boolean;
     anchor?: ContextAnchor | null;
   }): Promise<ChatMessageSummary> {
@@ -122,6 +125,7 @@ export class PersistChatMessageUseCase {
       role: message.role,
       content: message.content,
       sources: message.sources,
+      codeLocations: message.codeLocations,
       interrupted: message.interrupted,
       createdAt: message.createdAt.toISOString(),
     };
@@ -148,6 +152,7 @@ export class GetSessionContextUseCase {
         role: m.role,
         content: m.content,
         sources: m.sources,
+        codeLocations: m.codeLocations,
         interrupted: m.interrupted,
         createdAt: m.createdAt.toISOString(),
       })),

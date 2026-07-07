@@ -9,11 +9,13 @@ import {
   formatChatStatusLabel,
   type AuthUser,
   type ChatSource,
+  type CodeLocation,
 } from '@lingprism/graphql';
 import { getAuthToken } from '@lingprism/shared';
 import { GRAPHQL_ENDPOINT } from '@lingprism/graphql/constants';
 import { UserShell } from '../components/UserShell';
 import { ChatMarkdown } from '../components/ChatMarkdown';
+import { CodeLocationCard } from '../components/CodeLocationCard';
 
 interface ChatSession {
   id: string;
@@ -26,6 +28,7 @@ interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   sources?: ChatSource[];
+  codeLocations?: CodeLocation[];
   interrupted?: boolean;
 }
 
@@ -62,6 +65,10 @@ async function fetchMessages(sessionId: string): Promise<ChatMessage[]> {
         query($sessionId: ID!) {
           chatMessages(sessionId: $sessionId) {
             id role content sources { type title ref } interrupted
+            codeLocations {
+              repoId repoName repoUrl filePath language packageName className methodName
+              symbolKind startLine endLine docComment qualifiedRef snippet score
+            }
           }
         }
       `,
@@ -75,12 +82,14 @@ async function fetchMessages(sessionId: string): Promise<ChatMessage[]> {
     role: string;
     content: string;
     sources: ChatSource[] | null;
+    codeLocations: CodeLocation[] | null;
     interrupted: boolean;
   }>).map((msg) => ({
     id: msg.id,
     role: msg.role === 'user' ? 'user' : 'assistant',
     content: msg.content,
     sources: msg.sources ?? undefined,
+    codeLocations: msg.codeLocations ?? undefined,
     interrupted: msg.interrupted,
   }));
 }
@@ -237,6 +246,7 @@ export default function ChatPageInner() {
           role: 'assistant',
           content: assistantContent,
           sources: chat.sources.length > 0 ? [...chat.sources] : undefined,
+          codeLocations: chat.codeLocations.length > 0 ? [...chat.codeLocations] : undefined,
           interrupted: chat.interrupted,
         },
       ]);
@@ -253,7 +263,7 @@ export default function ChatPageInner() {
     }
     chat.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- finalize one streaming turn
-  }, [chat.streaming, chat.content, chat.sources, chat.interrupted, chat.error]);
+  }, [chat.streaming, chat.content, chat.sources, chat.codeLocations, chat.interrupted, chat.error]);
 
   const handleSend = async () => {
     const message = input.trim();
@@ -405,6 +415,11 @@ export default function ChatPageInner() {
               <div className="user-quick-title">架构图浏览</div>
               <div className="user-quick-desc">查看官方发布的系统架构图，交互探索服务节点</div>
             </a>
+            <a href="/code-search" className="user-quick-card">
+              <div className="user-quick-icon">⌁</div>
+              <div className="user-quick-title">代码检索</div>
+              <div className="user-quick-desc">语义或符号检索，返回仓库、类、方法与行号</div>
+            </a>
             <button type="button" className="user-quick-card" onClick={() => setShowChat(true)} style={{ textAlign: 'left' }}>
               <div className="user-quick-icon">⌕</div>
               <div className="user-quick-title">代码检索</div>
@@ -485,6 +500,17 @@ export default function ChatPageInner() {
                   ) : (
                     msg.content
                   )}
+                  {msg.role === 'assistant' && msg.codeLocations && msg.codeLocations.length > 0 ? (
+                    <div className="user-code-location-list">
+                      {msg.codeLocations.map((loc) => (
+                        <CodeLocationCard
+                          key={`${msg.id}-${loc.qualifiedRef}-${loc.startLine}`}
+                          location={loc}
+                          title={`${loc.methodName} 相关代码位置`}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
                   {msg.role === 'assistant' && msg.sources && msg.sources.length > 0 ? (
                     <div style={{ marginTop: 4 }}>
                       {msg.sources.map((source) => (
@@ -520,6 +546,17 @@ export default function ChatPageInner() {
                       ) : null}
                     </div>
                   )}
+                  {chat.codeLocations.length > 0 ? (
+                    <div className="user-code-location-list">
+                      {chat.codeLocations.map((loc) => (
+                        <CodeLocationCard
+                          key={`stream-${loc.qualifiedRef}-${loc.startLine}`}
+                          location={loc}
+                          title={`${loc.methodName} 相关代码位置`}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
                   {chat.sources.length > 0 ? (
                     <div style={{ marginTop: 4 }}>
                       {chat.sources.map((source) => (

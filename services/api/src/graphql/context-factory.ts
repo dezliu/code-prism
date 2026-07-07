@@ -85,6 +85,7 @@ import {
   UpdateAlertRuleUseCase,
   DeleteAlertRuleUseCase,
 } from '../application/alert/alert.use-cases.js';
+import { ResolveSymbolsUseCase } from '../application/search/resolve-symbols.use-case.js';
 import { UserRepository } from '../infrastructure/db/repositories/user.repository.js';
 import { RepoRepository } from '../infrastructure/db/repositories/repo.repository.js';
 import { KnowledgeRepository } from '../infrastructure/db/repositories/knowledge.repository.js';
@@ -279,5 +280,6 @@ export function buildGraphQLContext(
     createAlertRuleUseCase: new CreateAlertRuleUseCase(alertRepo),
     updateAlertRuleUseCase: new UpdateAlertRuleUseCase(alertRepo),
     deleteAlertRuleUseCase: new DeleteAlertRuleUseCase(alertRepo),
+    resolveSymbolsUseCase: new ResolveSymbolsUseCase(core),
   };
 }

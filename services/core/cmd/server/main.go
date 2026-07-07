@@ -65,14 +65,16 @@ func main() {
 	var searchSvc *application.SearchService
 	var archSvc *application.ArchitectureService
 	var graphSvc *application.GraphQueryService
+	var symbolResolveSvc *application.SymbolResolveService
 	var repoSyncSvc *application.RepoSyncService
 	if db != nil {
 		indexSvc = application.NewIndexService(db, application.IndexServiceDeps{
 			Git: gitClient, Indexer: indexerClient, Neo4j: neo4jClient,
-			Qdrant: qdrantStore, QdrantDim: cfg.EmbeddingDim,
+			Qdrant: qdrantStore, OpenSearch: openSearch, QdrantDim: cfg.EmbeddingDim,
 		})
 		searchSvc = application.NewSearchService(db, qdrantStore, cfg.EmbeddingDim, embedder, openSearch, neo4jClient)
 		graphSvc = application.NewGraphQueryService(neo4jClient)
+		symbolResolveSvc = application.NewSymbolResolveService(qdrantStore, cfg.EmbeddingDim, embedder, openSearch)
 		archSvc = application.NewArchitectureService(db)
 		repoSyncSvc = application.NewRepoSyncService(db, gitClient)
 	}
@@ -85,7 +87,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle("/health", httpiface.NewHealthHandler(healthSvc))
 	if indexSvc != nil && searchSvc != nil && archSvc != nil {
-		internalHandler := httpiface.NewHandler(indexSvc, searchSvc, archSvc, graphSvc)
+		internalHandler := httpiface.NewHandler(indexSvc, searchSvc, archSvc, graphSvc, symbolResolveSvc)
 		internalHandler.Register(mux)
 	}
 

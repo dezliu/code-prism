@@ -35,7 +35,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Parse { language, file } => {
             let source = std::fs::read_to_string(&file)?;
             let result = parse_source(&language, &source)?;
-            let output = output::format_output(result);
+            let output = output::format_output(result, &file);
             println!("{}", output::to_json(&output)?);
         }
     }

@@ -11,10 +11,14 @@ import (
 )
 
 type Symbol struct {
-	Name      string `json:"name"`
-	Kind      string `json:"kind"`
-	StartLine int    `json:"start_line"`
-	EndLine   int    `json:"end_line"`
+	Name          string  `json:"name"`
+	Kind          string  `json:"kind"`
+	StartLine     int     `json:"start_line"`
+	EndLine       int     `json:"end_line"`
+	ClassName     *string `json:"class_name,omitempty"`
+	PackageName   *string `json:"package_name,omitempty"`
+	DocComment    *string `json:"doc_comment,omitempty"`
+	QualifiedName string  `json:"qualified_name"`
 }
 
 type GraphEdge struct {
@@ -24,9 +28,11 @@ type GraphEdge struct {
 }
 
 type IndexerOutput struct {
-	Parse struct {
-		Language string   `json:"language"`
-		Symbols  []Symbol `json:"symbols"`
+	FilePath string `json:"file_path"`
+	Parse    struct {
+		Language    string   `json:"language"`
+		PackageName *string  `json:"package_name,omitempty"`
+		Symbols     []Symbol `json:"symbols"`
 	} `json:"parse"`
 	Edges   []GraphEdge `json:"edges"`
 	Version string      `json:"version"`
@@ -62,7 +68,7 @@ func (c *Client) IndexDirectory(ctx context.Context, root string) ([]IndexerOutp
 		if !ok {
 			return nil
 		}
-		out, err := c.parseFile(ctx, language, path)
+		out, err := c.parseFile(ctx, language, path, root)
 		if err != nil {
 			return nil
 		}
@@ -74,7 +80,7 @@ func (c *Client) IndexDirectory(ctx context.Context, root string) ([]IndexerOutp
 	return outputs, err
 }
 
-func (c *Client) parseFile(ctx context.Context, language, filePath string) (IndexerOutput, error) {
+func (c *Client) parseFile(ctx context.Context, language, filePath, root string) (IndexerOutput, error) {
 	cmd := exec.CommandContext(ctx, c.binary, "parse", "--language", language, "--file", filePath)
 	raw, err := cmd.Output()
 	if err != nil {
@@ -84,6 +90,11 @@ func (c *Client) parseFile(ctx context.Context, language, filePath string) (Inde
 	if err := json.Unmarshal(raw, &output); err != nil {
 		return IndexerOutput{}, fmt.Errorf("decode indexer output: %w", err)
 	}
+	rel, err := filepath.Rel(root, filePath)
+	if err != nil {
+		rel = filePath
+	}
+	output.FilePath = filepath.ToSlash(rel)
 	return output, nil
 }
 
@@ -113,7 +124,7 @@ func BuildGraphFromOutputs(outputs []IndexerOutput, repoID string) map[string]in
 		for _, sym := range out.Parse.Symbols {
 			symID := fmt.Sprintf("%s:%s", moduleID, sym.Name)
 			nodeType := "module"
-			if sym.Kind == "function_item" || strings.Contains(sym.Kind, "function") {
+			if sym.Kind == "function_item" || strings.Contains(sym.Kind, "function") || strings.Contains(sym.Kind, "method") {
 				nodeType = "service"
 			}
 			addNode(symID, sym.Name, nodeType)
@@ -131,4 +142,28 @@ func BuildGraphFromOutputs(outputs []IndexerOutput, repoID string) map[string]in
 	}
 
 	return map[string]interface{}{"nodes": nodes, "edges": edges}
+}
+
+func SymbolMethodName(sym Symbol) string {
+	if strings.Contains(sym.Kind, "function") || strings.Contains(sym.Kind, "method") {
+		return sym.Name
+	}
+	return ""
+}
+
+func SymbolClassName(sym Symbol) string {
+	if sym.ClassName != nil && *sym.ClassName != "" {
+		return *sym.ClassName
+	}
+	if strings.Contains(sym.Kind, "class") || strings.Contains(sym.Kind, "struct") || strings.Contains(sym.Kind, "type") {
+		return sym.Name
+	}
+	return ""
+}
+
+func DerefString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }

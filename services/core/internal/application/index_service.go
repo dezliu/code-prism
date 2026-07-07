@@ -14,6 +14,7 @@ import (
 	gitclient "github.com/lingprism/core/internal/infrastructure/git"
 	idxclient "github.com/lingprism/core/internal/infrastructure/indexer"
 	neo4jstore "github.com/lingprism/core/internal/infrastructure/neo4j"
+	opensearchstore "github.com/lingprism/core/internal/infrastructure/opensearch"
 	"github.com/lingprism/core/internal/infrastructure/mysql"
 	qdrantclient "github.com/lingprism/core/internal/infrastructure/qdrant"
 )
@@ -24,25 +25,28 @@ type IndexService struct {
 	indexer        *idxclient.Client
 	neo4j          *neo4jstore.Client
 	qdrant         *qdrantclient.Client
+	openSearch     *opensearchstore.Client
 	qdrantDim      int
 }
 
 type IndexServiceDeps struct {
-	Git       *gitclient.Client
-	Indexer   *idxclient.Client
-	Neo4j     *neo4jstore.Client
-	Qdrant    *qdrantclient.Client
-	QdrantDim int
+	Git        *gitclient.Client
+	Indexer    *idxclient.Client
+	Neo4j      *neo4jstore.Client
+	Qdrant     *qdrantclient.Client
+	OpenSearch *opensearchstore.Client
+	QdrantDim  int
 }
 
 func NewIndexService(db *mysql.Client, deps IndexServiceDeps) *IndexService {
 	return &IndexService{
-		db:        db,
-		git:       deps.Git,
-		indexer:   deps.Indexer,
-		neo4j:     deps.Neo4j,
-		qdrant:    deps.Qdrant,
-		qdrantDim: deps.QdrantDim,
+		db:         db,
+		git:        deps.Git,
+		indexer:    deps.Indexer,
+		neo4j:      deps.Neo4j,
+		qdrant:     deps.Qdrant,
+		openSearch: deps.OpenSearch,
+		qdrantDim:  deps.QdrantDim,
 	}
 }
 
@@ -139,6 +143,12 @@ func (s *IndexService) RemoveFromIndex(ctx context.Context, repoID string) (Remo
 		}
 	}
 
+	if s.openSearch != nil && s.openSearch.Enabled() {
+		if err := s.openSearch.DeleteByRepoID(ctx, repoID); err != nil {
+			log.Printf(`{"level":"warn","msg":"opensearch delete failed","repoId":%q,"error":%q}`, repoID, err.Error())
+		}
+	}
+
 	if s.neo4j != nil {
 		if err := s.neo4j.DeleteRepoGraph(ctx, repoID); err != nil {
 			log.Printf(`{"level":"warn","msg":"neo4j delete failed","repoId":%q,"error":%q}`, repoID, err.Error())
@@ -207,11 +217,26 @@ func (s *IndexService) runIndexPipeline(jobID, repoID string) {
 		}
 		graph = idxclient.BuildGraphFromOutputs(outputs, repoID)
 
+		repoMeta := s.loadRepoMeta(ctx, repo)
+
+		if s.openSearch != nil && s.openSearch.Enabled() {
+			_ = s.openSearch.DeleteByRepoID(ctx, repoID)
+		}
+
 		if s.qdrant != nil {
 			_ = s.qdrant.EnsureCollection(ctx)
-			points := buildQdrantPoints(outputs, repoID, syncResult.Path, s.qdrantDim)
+			points := buildQdrantPoints(outputs, repoMeta, syncResult.Path, s.qdrantDim)
 			if upsertErr := s.qdrant.UpsertPoints(ctx, points); upsertErr != nil {
 				log.Printf(`{"level":"warn","msg":"qdrant upsert failed","error":%q}`, upsertErr.Error())
+			}
+		}
+
+		if s.openSearch != nil && s.openSearch.Enabled() {
+			_, docs := buildSymbolIndexRecords(outputs, repoMeta, syncResult.Path, s.qdrantDim)
+			for _, doc := range docs {
+				if err := s.openSearch.IndexCodeSymbol(ctx, doc); err != nil {
+					log.Printf(`{"level":"warn","msg":"opensearch symbol index failed","error":%q}`, err.Error())
+				}
 			}
 		}
 
@@ -343,25 +368,22 @@ func computeHealthScore(metrics map[string]interface{}) int {
 	return base
 }
 
-func buildQdrantPoints(outputs []idxclient.IndexerOutput, repoID, root string, dim int) []map[string]interface{} {
-	points := []map[string]interface{}{}
-	idx := 0
-	for _, out := range outputs {
-		for _, sym := range out.Parse.Symbols {
-			snippet := fmt.Sprintf("%s %s", sym.Kind, sym.Name)
-			vec := qdrantclient.HashEmbed(snippet, dim)
-			points = append(points, map[string]interface{}{
-				"id":     idx,
-				"vector": vec,
-				"payload": map[string]interface{}{
-					"repoId": repoID, "symbol": sym.Name, "kind": sym.Kind,
-					"filePath": root, "snippet": snippet,
-				},
-			})
-			idx++
-		}
+func (s *IndexService) loadRepoMeta(ctx context.Context, repo repoRecord) repoMeta {
+	meta := repoMeta{ID: repo.ID, Name: repo.ID, URL: repo.URL}
+	if s.db == nil {
+		return meta
 	}
-	return points
+	var name string
+	err := s.db.DB().QueryRowContext(ctx, `
+		SELECT COALESCE(m.display_name, r.name) AS name
+		FROM repos r
+		LEFT JOIN repo_metadata m ON m.repo_id = r.id
+		WHERE r.id = ?
+	`, repo.ID).Scan(&name)
+	if err == nil && name != "" {
+		meta.Name = name
+	}
+	return meta
 }
 
 func (s *IndexService) failJob(ctx context.Context, jobID, repoID string, err error) {

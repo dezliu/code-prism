@@ -32,8 +32,26 @@ mod tests {
     #[test]
     fn should_build_sequential_edges_between_symbols() {
         let symbols = vec![
-            Symbol { name: "main".into(), kind: "function_item".into(), start_line: 1, end_line: 3 },
-            Symbol { name: "helper".into(), kind: "function_item".into(), start_line: 5, end_line: 8 },
+            Symbol {
+                name: "main".into(),
+                kind: "function_item".into(),
+                start_line: 1,
+                end_line: 3,
+                class_name: None,
+                package_name: None,
+                doc_comment: None,
+                qualified_name: "main".into(),
+            },
+            Symbol {
+                name: "helper".into(),
+                kind: "function_item".into(),
+                start_line: 5,
+                end_line: 8,
+                class_name: None,
+                package_name: None,
+                doc_comment: None,
+                qualified_name: "helper".into(),
+            },
         ];
         let edges = build_edges(&symbols);
         assert_eq!(edges.len(), 1);

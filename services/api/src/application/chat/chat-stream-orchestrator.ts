@@ -15,7 +15,7 @@ import {
 import { deriveSessionTitle } from './session-title.js';
 import type { SseEvent } from '../../infrastructure/clients/ai-worker.client.js';
 import type { ContextAnchor } from '../../infrastructure/db/models/chat-session.model.js';
-import type { MessageSource } from '../../infrastructure/db/models/chat-message.model.js';
+import type { MessageSource, CodeLocationRecord } from '../../infrastructure/db/models/chat-message.model.js';
 import type { ListEnabledQaTemplatesUseCase } from '../template/template.use-cases.js';
 import type { RepoRepository } from '../../infrastructure/db/repositories/repo.repository.js';
 
@@ -107,6 +107,7 @@ export class ChatStreamOrchestrator {
 
     let assistantContent = '';
     const sources: MessageSource[] = [];
+    const codeLocations: CodeLocationRecord[] = [];
     let interrupted = false;
     let anchor: ContextAnchor | null = sessionContext.anchor;
 
@@ -122,6 +123,25 @@ export class ChatStreamOrchestrator {
             type: String(event.data.type ?? 'doc') as MessageSource['type'],
             title: String(event.data.title ?? ''),
             ref: event.data.ref ? String(event.data.ref) : undefined,
+          });
+        }
+        if (event.event === 'code_location') {
+          codeLocations.push({
+            repoId: String(event.data.repoId ?? ''),
+            repoName: String(event.data.repoName ?? ''),
+            repoUrl: String(event.data.repoUrl ?? ''),
+            filePath: String(event.data.filePath ?? ''),
+            language: event.data.language ? String(event.data.language) : undefined,
+            packageName: event.data.packageName ? String(event.data.packageName) : undefined,
+            className: event.data.className ? String(event.data.className) : undefined,
+            methodName: String(event.data.methodName ?? event.data.symbol ?? ''),
+            symbolKind: event.data.symbolKind ? String(event.data.symbolKind) : undefined,
+            startLine: Number(event.data.startLine ?? 0),
+            endLine: Number(event.data.endLine ?? 0),
+            docComment: event.data.docComment ? String(event.data.docComment) : undefined,
+            qualifiedRef: String(event.data.qualifiedRef ?? ''),
+            snippet: event.data.snippet ? String(event.data.snippet) : undefined,
+            score: event.data.score != null ? Number(event.data.score) : undefined,
           });
         }
         if (event.event === 'done') {
@@ -144,6 +164,7 @@ export class ChatStreamOrchestrator {
           role: 'assistant',
           content: assistantContent,
           sources,
+          codeLocations: codeLocations.length > 0 ? codeLocations : undefined,
           interrupted,
           anchor,
         });

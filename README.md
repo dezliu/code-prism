@@ -360,7 +360,7 @@ cd infra/docker && docker compose --profile app build core
 | monitor | 3002 | 监控平台 |
 | api | 4000 | GraphQL `POST /graphql` · SSE `POST /api/chat/*` |
 | ai-worker HTTP | 8001 | 内部 LLM 流式（api 代理） |
-| core HTTP | **18080**† | Go 内部 HTTP `/health`、内部 API |
+| core HTTP | **8080**† | Go 内部 HTTP `/health`、内部 API |
 | core gRPC | 50051 | Go 核心业务 gRPC |
 | mcp | 8090 | MCP 2025 端点（本地需手动启动） |
 | MySQL | 13306 | Docker 映射（容器内 3306） |
@@ -369,7 +369,7 @@ cd infra/docker && docker compose --profile app build core
 | Qdrant | 6335 | REST（gRPC 6334） |
 | OpenSearch | 9201 | REST |
 
-† **core HTTP：** 若宿主机 `8080` 空闲则使用 `8080`；当 Docker Nginx 全栈已启动占用 `8080` 时，自动回退到 `18080`。本地其他服务连 core 时请设 `CORE_GRPC_ADDR=localhost:50051`；HTTP 可指向 `http://localhost:18080`。
+† **core HTTP：** 默认使用 `8080`；若宿主机 `8080` 被占用（如 Docker Nginx 全栈已启动），Core 会自动回退到 `18080`。本地其他服务连 core 时请设 `CORE_GRPC_ADDR=localhost:50051`；HTTP 可指向 `http://localhost:8080` 或 `http://localhost:18080`。
 
 ‡ 若 `infra/docker/.env` 中 `REDIS_HOST_PORT` 与上表不一致，以该文件为准。
 
@@ -448,6 +448,10 @@ pnpm install
 
 Docker 全栈 Nginx 已占用宿主机 `8080`。本地 core 会自动回退到 `18080`；验证：`curl http://localhost:18080/health`。若需固定端口，在根 `.env` 设置 `CORE_HTTP_PORT=18080`。
 
+**注意：** Core 服务依赖 Qdrant 和 OpenSearch，确保根 `.env` 中配置正确：
+- `QDRANT_URL=http://localhost:6335`（Docker 映射端口）
+- `OPENSEARCH_URL=http://localhost:9201`（Docker 映射端口）
+
 ### core 报 `mysql unavailable` / 连接 `localhost:3306` 失败
 
 根 `.env` 中 `MYSQL_DSN` 可能仍指向 `3306`，而 Docker MySQL 映射在 `13306`。任选其一：
@@ -497,10 +501,14 @@ cd infra/docker && docker compose --profile app up -d ai-worker
 
 ### `testRepoConnection` 报 `fetch failed` 或 `CORE_UNAVAILABLE`
 
-1. 启动 Core：`cd services/core && go run ./cmd/server`（日志出现 `core http server started`）
-2. 确认健康：`curl http://localhost:8080/health` 或 `curl http://localhost:18080/health`
-3. API 默认依次尝试 `8080`、`18080`；也可在根 `.env` 设置 `CORE_HTTP_URL=http://localhost:18080`
-4. 无 Core 的纯前端联调可设 `CORE_HTTP_STUB=true`（返回 mock 数据）
+1. 确认 Docker 数据层运行：`cd infra/docker && docker compose ps`
+2. 确认根 `.env` 中 Qdrant/OpenSearch 端口正确：
+   - `QDRANT_URL=http://localhost:6335`
+   - `OPENSEARCH_URL=http://localhost:9201`
+3. 启动 Core：`cd services/core && go run ./cmd/server`（日志出现 `core http server started`）
+4. 确认健康：`curl http://localhost:8080/health` 或 `curl http://localhost:18080/health`
+5. API 默认依次尝试 `8080`、`18080`；也可在根 `.env` 设置 `CORE_HTTP_URL=http://localhost:18080`
+6. 无 Core 的纯前端联调可设 `CORE_HTTP_STUB=true`（返回 mock 数据）
 
 ### GraphQL `login` 报 `ECONNREFUSED`
 

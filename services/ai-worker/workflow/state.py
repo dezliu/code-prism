@@ -11,6 +11,7 @@ from chains.context_anchor import ContextAnchor
 IntentKind = Literal[
     "architecture",
     "code",
+    "code_location",
     "doc",
     "people",
     "general",
@@ -40,6 +41,7 @@ RouteKind = Literal[
     "rag_retrieve",
     "rag_quality_gate",
     "hyde_expand",
+    "symbol_resolve",
     "generate_answer",
     "grounding_check",
     "stream_output",
@@ -89,6 +91,7 @@ class QaWorkflowState:
     hyde_used: bool = False
     hyde_draft: str | None = None
     low_confidence_retrieval: bool = False
+    code_locations: list[dict[str, Any]] = field(default_factory=list)
 
     generated_answer: str = ""
     stream_buffer: str = ""

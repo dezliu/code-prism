@@ -99,6 +99,12 @@ class CoreSearchClient:
             return []
         return list(data.get("hits", []))
 
+    async def resolve_symbols(self, body: dict[str, Any]) -> dict[str, Any]:
+        data = await self._request("POST", "/internal/symbols/resolve", json_body=body)
+        if data is None:
+            return {"locations": []}
+        return data
+
     def _offline_fallback(self, query: str) -> list[dict[str, Any]]:
         return [
             {

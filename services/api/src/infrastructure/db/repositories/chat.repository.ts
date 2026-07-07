@@ -5,6 +5,7 @@ import {
 } from '../models/chat-session.model.js';
 import {
   ChatMessageModel,
+  type CodeLocationRecord,
   type MessageSource,
 } from '../models/chat-message.model.js';
 
@@ -61,6 +62,7 @@ export class ChatRepository {
     role: 'user' | 'assistant';
     content: string;
     sources?: MessageSource[];
+    codeLocations?: CodeLocationRecord[];
     interrupted?: boolean;
   }): Promise<ChatMessageModel> {
     const id = randomUUID();
@@ -73,6 +75,7 @@ export class ChatRepository {
       role: input.role,
       content: input.content,
       sources: input.sources ?? null,
+      codeLocations: input.codeLocations ?? null,
       interrupted: input.interrupted ?? false,
     });
   }

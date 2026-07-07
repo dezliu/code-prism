@@ -7,7 +7,7 @@ import (
 )
 
 func TestInternalHandlers_SearchMethodNotAllowed(t *testing.T) {
-	h := NewHandler(nil, nil, nil, nil)
+	h := NewHandler(nil, nil, nil, nil, nil)
 	mux := http.NewServeMux()
 	h.Register(mux)
 
@@ -21,7 +21,7 @@ func TestInternalHandlers_SearchMethodNotAllowed(t *testing.T) {
 }
 
 func TestInternalHandlers_TestConnectionInvalidJSON(t *testing.T) {
-	h := NewHandler(nil, nil, nil, nil)
+	h := NewHandler(nil, nil, nil, nil, nil)
 	mux := http.NewServeMux()
 	h.Register(mux)
 

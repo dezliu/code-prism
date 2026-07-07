@@ -7,6 +7,7 @@ import re
 from typing import Any
 
 from chains.intent_rules import classify_intent
+from chains.symbol_query import is_code_location_query
 from infrastructure.llm.factory import PlaceholderChatModel
 from infrastructure.langfuse_tracer import trace_llm_call, trace_workflow_node
 from infrastructure.llm.config import resolve_llm_config
@@ -33,6 +34,8 @@ def _extract_json(text: str) -> dict[str, Any] | None:
 
 def _regex_intent(message: str) -> tuple[IntentKind, float, list[str]]:
     intents = classify_intent(message)
+    if "code_location" in intents or is_code_location_query(message):
+        return "code_location", 0.85, intents
     primary = intents[0] if intents else "general"
     if primary in ("architecture", "code", "doc", "people"):
         mapped: IntentKind = primary  # type: ignore[assignment]
@@ -56,11 +59,12 @@ async def intent_classify_node(state: QaWorkflowState, deps: WorkflowDeps) -> Ro
         else:
             prompt = (
                 "你是企业知识库问答意图分类器。分析用户问题并输出 JSON：\n"
-                '{"intent":"architecture|code|doc|people|general|direct_answer|refuse|clarify",'
+                '{"intent":"architecture|code|code_location|doc|people|general|direct_answer|refuse|clarify",'
                 '"confidence":0.0-1.0,"subIntents":[],"clarifyQuestion":null}\n'
                 "规则：\n"
                 "- architecture: 架构/依赖/调用链/模块关系\n"
-                "- code: 函数/类/接口/字段/表结构\n"
+                "- code: 函数/类/接口/字段/表结构（解释逻辑，非定位）\n"
+                "- code_location: 定位代码定义/实现位置（文件、类、方法、行号）\n"
                 "- doc: 文档/手册/ADR/培训\n"
                 "- people: 负责人/团队\n"
                 "- direct_answer: 纯闲聊或仅依赖对话历史可答\n"
@@ -82,7 +86,9 @@ async def intent_classify_node(state: QaWorkflowState, deps: WorkflowDeps) -> Ro
             if raw_intent in ("direct_answer", "refuse", "clarify"):
                 state.intent = raw_intent  # type: ignore[assignment]
             else:
-                state.intent = raw_intent if raw_intent in ("architecture", "code", "doc", "people", "general") else "general"  # type: ignore[assignment]
+                state.intent = raw_intent if raw_intent in (
+                    "architecture", "code", "code_location", "doc", "people", "general"
+                ) else "general"  # type: ignore[assignment]
             state.intent_confidence = float(parsed.get("confidence", 0.7))
             state.sub_intents = list(parsed.get("subIntents") or [])
             clarify = parsed.get("clarifyQuestion")
@@ -114,5 +120,8 @@ async def intent_classify_node(state: QaWorkflowState, deps: WorkflowDeps) -> Ro
         )
         state.intent = "clarify"
         return "clarify"
+
+    if state.intent == "code_location":
+        return "symbol_resolve"
 
     return "rag_prepare"

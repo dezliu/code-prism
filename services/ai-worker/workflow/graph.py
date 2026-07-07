@@ -24,6 +24,7 @@ from workflow.nodes.response import (
     refuse_node,
     stream_output_node,
 )
+from workflow.nodes.symbol_resolve import symbol_resolve_node
 from workflow.nodes.security import security_guard_node
 from workflow.nodes.template import template_apply_node, template_match_node
 from workflow.state import QaWorkflowState, RouteKind
@@ -64,6 +65,10 @@ async def _execute_workflow(state: QaWorkflowState, deps: WorkflowDeps) -> None:
         if route == "refuse":
             await refuse_node(state, deps)
             route = "stream_output"
+            continue
+
+        if route == "symbol_resolve":
+            route = await symbol_resolve_node(state, deps)
             continue
 
         if route == "rag_prepare":

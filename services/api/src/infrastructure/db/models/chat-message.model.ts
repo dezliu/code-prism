@@ -9,6 +9,24 @@ export interface MessageSource {
   ref?: string;
 }
 
+export interface CodeLocationRecord {
+  repoId: string;
+  repoName: string;
+  repoUrl: string;
+  filePath: string;
+  language?: string;
+  packageName?: string;
+  className?: string;
+  methodName: string;
+  symbolKind?: string;
+  startLine: number;
+  endLine: number;
+  docComment?: string;
+  qualifiedRef: string;
+  snippet?: string;
+  score?: number;
+}
+
 export class ChatMessageModel extends BaseModel {
   static tableName = 'chat_messages';
   static columnNameMappers = snakeCaseMappers();
@@ -18,10 +36,11 @@ export class ChatMessageModel extends BaseModel {
   role!: MessageRole;
   content!: string;
   sources!: MessageSource[] | null;
+  codeLocations!: CodeLocationRecord[] | null;
   interrupted!: boolean;
   createdAt!: Date;
 
   static get jsonAttributes() {
-    return ['sources'];
+    return ['sources', 'codeLocations'];
   }
 }

@@ -8,6 +8,7 @@ import { monitorTypeDefs } from './monitor.graphql.js';
 import { architectureTypeDefs } from './architecture.graphql.js';
 import { templateTypeDefs } from './template.graphql.js';
 import { alertTypeDefs } from './alert.graphql.js';
+import { searchTypeDefs } from './search.graphql.js';
 
 export const typeDefs = [
   commonTypeDefs,
@@ -19,4 +20,5 @@ export const typeDefs = [
   architectureTypeDefs,
   templateTypeDefs,
   alertTypeDefs,
+  searchTypeDefs,
 ];

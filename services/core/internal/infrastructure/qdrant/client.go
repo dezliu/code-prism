@@ -18,12 +18,23 @@ type Client struct {
 }
 
 type PointPayload struct {
-	RepoID   string `json:"repoId"`
-	FilePath string `json:"filePath"`
-	Symbol   string `json:"symbol"`
-	Kind     string `json:"kind"`
-	Snippet  string `json:"snippet"`
-	DocID    string `json:"docId"`
+	RepoID       string `json:"repoId"`
+	RepoName     string `json:"repoName"`
+	RepoURL      string `json:"repoUrl"`
+	FilePath     string `json:"filePath"`
+	Symbol       string `json:"symbol"`
+	Kind         string `json:"kind"`
+	SymbolKind   string `json:"symbolKind"`
+	Language     string `json:"language"`
+	PackageName  string `json:"packageName"`
+	ClassName    string `json:"className"`
+	MethodName   string `json:"methodName"`
+	StartLine    int    `json:"startLine"`
+	EndLine      int    `json:"endLine"`
+	DocComment   string `json:"docComment"`
+	QualifiedRef string `json:"qualifiedRef"`
+	Snippet      string `json:"snippet"`
+	DocID        string `json:"docId"`
 }
 
 type SearchHit struct {
@@ -130,19 +141,42 @@ func (c *Client) Search(ctx context.Context, vector []float32, limit int) ([]Sea
 	}
 	hits := make([]SearchHit, 0, len(decoded.Result))
 	for _, item := range decoded.Result {
+		p := item.Payload
 		hits = append(hits, SearchHit{
 			Score: item.Score,
 			Payload: PointPayload{
-				RepoID:   fmt.Sprint(item.Payload["repoId"]),
-				FilePath: fmt.Sprint(item.Payload["filePath"]),
-				Symbol:   fmt.Sprint(item.Payload["symbol"]),
-				Kind:     fmt.Sprint(item.Payload["kind"]),
-				Snippet:  fmt.Sprint(item.Payload["snippet"]),
-				DocID:    fmt.Sprint(item.Payload["docId"]),
+				RepoID:       fmt.Sprint(p["repoId"]),
+				RepoName:     fmt.Sprint(p["repoName"]),
+				RepoURL:      fmt.Sprint(p["repoUrl"]),
+				FilePath:     fmt.Sprint(p["filePath"]),
+				Symbol:       fmt.Sprint(p["symbol"]),
+				Kind:         fmt.Sprint(p["kind"]),
+				SymbolKind:   fmt.Sprint(p["symbolKind"]),
+				Language:     fmt.Sprint(p["language"]),
+				PackageName:  fmt.Sprint(p["packageName"]),
+				ClassName:    fmt.Sprint(p["className"]),
+				MethodName:   fmt.Sprint(p["methodName"]),
+				StartLine:    intFromPayload(p["startLine"]),
+				EndLine:      intFromPayload(p["endLine"]),
+				DocComment:   fmt.Sprint(p["docComment"]),
+				QualifiedRef: fmt.Sprint(p["qualifiedRef"]),
+				Snippet:      fmt.Sprint(p["snippet"]),
+				DocID:        fmt.Sprint(p["docId"]),
 			},
 		})
 	}
 	return hits, nil
+}
+
+func intFromPayload(v interface{}) int {
+	switch n := v.(type) {
+	case float64:
+		return int(n)
+	case int:
+		return n
+	default:
+		return 0
+	}
 }
 
 // DeleteByDocID removes all vector points whose payload.docId matches.

@@ -10,10 +10,11 @@ import (
 )
 
 type Handler struct {
-	indexSvc  *application.IndexService
-	searchSvc *application.SearchService
-	archSvc   *application.ArchitectureService
-	graphSvc  *application.GraphQueryService
+	indexSvc         *application.IndexService
+	searchSvc        *application.SearchService
+	archSvc          *application.ArchitectureService
+	graphSvc         *application.GraphQueryService
+	symbolResolveSvc *application.SymbolResolveService
 }
 
 func NewHandler(
@@ -21,8 +22,12 @@ func NewHandler(
 	search *application.SearchService,
 	arch *application.ArchitectureService,
 	graph *application.GraphQueryService,
+	symbolResolve *application.SymbolResolveService,
 ) *Handler {
-	return &Handler{indexSvc: index, searchSvc: search, archSvc: arch, graphSvc: graph}
+	return &Handler{
+		indexSvc: index, searchSvc: search, archSvc: arch,
+		graphSvc: graph, symbolResolveSvc: symbolResolve,
+	}
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
@@ -33,6 +38,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/internal/index/remove", h.removeIndex)
 	mux.HandleFunc("/internal/search", h.handleSearch)
 	mux.HandleFunc("/internal/search/hybrid", h.handleHybridSearch)
+	mux.HandleFunc("/internal/symbols/resolve", h.handleSymbolResolve)
 	mux.HandleFunc("/internal/graph/neighbors", h.handleGraphNeighbors)
 	mux.HandleFunc("/internal/knowledge/index", h.indexKnowledgeDoc)
 	mux.HandleFunc("/internal/knowledge/remove", h.removeKnowledgeDoc)
@@ -176,6 +182,28 @@ func (h *Handler) handleHybridSearch(w http.ResponseWriter, r *http.Request) {
 	result, err := h.searchSvc.HybridSearch(r.Context(), application.HybridSearchInput{
 		Query: body.Query, RepoIDs: body.RepoIDs, Intent: body.Intent, Mode: body.Mode,
 	})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) handleSymbolResolve(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if h.symbolResolveSvc == nil {
+		writeJSON(w, http.StatusOK, application.SymbolResolveResult{Locations: []application.CodeLocation{}})
+		return
+	}
+	var body application.SymbolResolveInput
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	result, err := h.symbolResolveSvc.Resolve(r.Context(), body)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
