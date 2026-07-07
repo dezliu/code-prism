@@ -1,5 +1,15 @@
-# LingPrism Core — Go HTTP + gRPC
+# LingPrism Core — Go HTTP + gRPC (with bundled indexer binary)
 # Build: docker build -f infra/docker/Dockerfile.core -t lingprism-core .
+
+# ── Stage 0: Build Rust indexer ──
+FROM rust:1.85-alpine AS indexer-builder
+RUN apk add --no-cache musl-dev
+WORKDIR /src
+COPY services/indexer/Cargo.toml services/indexer/Cargo.lock ./
+COPY services/indexer/src ./src
+RUN cargo build --release
+
+# ── Stage 1: Build Go core ──
 FROM golang:1.22-alpine AS builder
 # Default to CN-friendly proxy; override: --build-arg GOPROXY=https://proxy.golang.org,direct
 ARG GOPROXY=https://goproxy.cn,direct
@@ -11,11 +21,13 @@ RUN go mod download
 COPY services/core/ ./
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /lingprism-core ./cmd/server
 
+# ── Stage 2: Runtime ──
 FROM alpine:3.20
-RUN apk add --no-cache ca-certificates wget git
+RUN apk add --no-cache ca-certificates wget git libgcc
 RUN addgroup -S lingprism && adduser -S lingprism -G lingprism
 RUN mkdir -p /var/lib/lingprism/repos && chown lingprism:lingprism /var/lib/lingprism/repos
 COPY --from=builder /lingprism-core /usr/local/bin/lingprism-core
+COPY --from=indexer-builder /src/target/release/lingprism-indexer /usr/local/bin/lingprism-indexer
 USER lingprism
 EXPOSE 8080 50051
 ENV CORE_HTTP_PORT=8080

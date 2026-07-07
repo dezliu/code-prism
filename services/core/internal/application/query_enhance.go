@@ -27,8 +27,9 @@ func expandQueryWithLLM(ctx context.Context, client *llm.Client, query string) [
 规则：
 - 每行一个 query，不要编号
 - 可中英文混合，保留核心实体名（类名、方法名、模块名）
-- 将中文描述翻译为对应的英文代码术语（如"订单"→"order"，"回滚"→"rollback"）
+- 将中文功能描述翻译为对应的英文代码术语（如"订单"→"order"，"回滚"→"rollback"，"编排"→"workflow/orchestration/chain"，"知识库"→"knowledge"）
 - 如果用户问的是代码位置，提取关键标识符
+- 如果用户提到项目/产品名（如 codeprism、lingprism），不要将其作为代码符号，而是关注其功能描述部分
 - 只输出改写后的 query，不要解释`,
 		},
 		{

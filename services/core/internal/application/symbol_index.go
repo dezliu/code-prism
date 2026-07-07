@@ -24,7 +24,7 @@ func buildSymbolIndexRecords(
 ) ([]map[string]interface{}, []opensearchstore.CodeSymbolDocument) {
 	points := []map[string]interface{}{}
 	docs := []opensearchstore.CodeSymbolDocument{}
-	idx := 0
+	idx := 1
 
 	for _, out := range outputs {
 		relPath := out.FilePath

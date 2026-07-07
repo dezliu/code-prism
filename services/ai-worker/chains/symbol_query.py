@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from chains.rag_retrieval import extract_keywords
 
@@ -23,6 +23,12 @@ _REPO_HINT = re.compile(
     r"(?:在|于)\s*([A-Za-z0-9_-]+(?:-service|-repo)?)\s*(?:仓库|服务|里|中|的)?",
 )
 
+# 常见项目/产品名，不应被当作代码符号
+_PROJECT_NAMES = frozenset({
+    "codeprism", "lingprism", "prism", "codegraph",
+    "github", "gitlab", "bitbucket",
+})
+
 
 @dataclass
 class ParsedSymbolQuery:
@@ -33,6 +39,7 @@ class ParsedSymbolQuery:
     package_name: str | None = None
     repo_hint: str | None = None
     is_location_intent: bool = False
+    topic_keywords: list[str] = field(default_factory=list)  # 中文主题词（如 "llm编排"）
 
 
 def is_code_location_query(message: str) -> bool:
@@ -79,7 +86,11 @@ def parse_symbol_query(message: str) -> ParsedSymbolQuery:
         return parsed
 
     keywords = extract_keywords(text)
-    english = sorted([k for k in keywords if re.match(r"^[A-Za-z]", k)], key=len, reverse=True)
+    english = sorted(
+        [k for k in keywords if re.match(r"^[A-Za-z]", k) and k.lower() not in _PROJECT_NAMES],
+        key=len,
+        reverse=True,
+    )
     if english:
         if len(english) >= 2 and english[0][0].isupper() and english[1][0].islower():
             parsed.class_name = english[0]
@@ -87,6 +98,59 @@ def parse_symbol_query(message: str) -> ParsedSymbolQuery:
         elif english[0][0].isupper():
             parsed.class_name = english[0]
         else:
-            parsed.method_name = english[0]
+            # 仅当英文标识符看起来像代码符号（驼峰/下划线/足够短）时才设为 method_name
+            candidate = english[0]
+            if _looks_like_code_symbol(candidate):
+                parsed.method_name = candidate
+
+    # 提取中文主题词组（如 "llm编排" → 保留完整语义）
+    topic_keywords = _extract_topic_keywords(text)
+    parsed.topic_keywords = topic_keywords
+
+    # 构建更好的语义查询：英文标识符 + 中文主题词组合
+    if topic_keywords and not parsed.class_name and not parsed.method_name:
+        # 纯自然语言查询：保留完整的语义表达
+        parsed.semantic_query = text
+    elif topic_keywords:
+        # 有符号名也有主题词，拼接增强语义
+        symbol_part = parsed.class_name or parsed.method_name or ""
+        parsed.semantic_query = f"{symbol_part} {' '.join(topic_keywords)}"
 
     return parsed
+
+
+def _looks_like_code_symbol(name: str) -> bool:
+    """判断一个英文标识符是否像代码符号（而非普通项目名/产品名）。"""
+    if name.lower() in _PROJECT_NAMES:
+        return False
+    # 驼峰命名（如 searchCode, resolveSymbols）
+    if re.search(r"[a-z][A-Z]", name):
+        return True
+    # 含下划线/短横线（如 llm_worker, code-search）
+    if "_" in name or "-" in name:
+        return True
+    # 较短的标识符（<=12字符）且看起来像动词/名词
+    if len(name) <= 12:
+        return True
+    return False
+
+
+def _extract_topic_keywords(text: str) -> list[str]:
+    """提取中文主题词及其中英文混合前缀（如 'llm编排'）。"""
+    topics: list[str] = []
+    # 匹配英文前缀+中文主题（如 llm编排, api接口）
+    mixed = re.findall(r"([A-Za-z][A-Za-z0-9_-]*[\u4e00-\u9fa5]{2,})", text)
+    for m in mixed:
+        topics.append(m)
+    # 匹配纯中文主题词（2-6字）
+    chinese = re.findall(r"([\u4e00-\u9fa5]{2,6})", text)
+    # 过滤疑问词/停用词/通用词
+    stop = {
+        "在哪", "哪里", "哪个", "什么", "怎么", "如何", "为什么",
+        "是否", "可以", "能够", "有没有", "请问", "代码", "入口",
+        "管理", "功能", "项目", "系统", "平台", "相关", "核心",
+    }
+    for c in chinese:
+        if c not in stop and c not in topics:
+            topics.append(c)
+    return topics

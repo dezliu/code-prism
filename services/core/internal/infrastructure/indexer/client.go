@@ -57,8 +57,11 @@ func (c *Client) IndexDirectory(ctx context.Context, root string) ([]IndexerOutp
 	}
 
 	err := filepath.Walk(root, func(path string, info os.FileInfo, walkErr error) error {
-		if walkErr != nil || info.IsDir() {
-			if info != nil && info.IsDir() && (info.Name() == ".git" || info.Name() == "node_modules" || info.Name() == "target") {
+		if walkErr != nil {
+			return nil
+		}
+		if info.IsDir() {
+			if info.Name() == ".git" || info.Name() == "node_modules" || info.Name() == "target" || info.Name() == ".venv" || info.Name() == ".next" {
 				return filepath.SkipDir
 			}
 			return nil

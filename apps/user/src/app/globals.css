@@ -772,63 +772,54 @@ body {
   line-height: 1.5;
 }
 
-.user-code-search-page {
-  max-width: 880px;
-  margin: 0 auto;
-  padding: 24px 20px 48px;
+.user-code-search-toolbar {
+  justify-content: space-between;
+  align-items: center;
 }
 
-.user-code-search-header h1 {
-  margin: 0 0 8px;
-  font-size: 24px;
+.user-code-search-toolbar__links {
+  display: flex;
+  gap: 8px;
 }
 
-.user-code-search-header p {
-  margin: 0;
-  color: var(--user-text-muted);
+.user-code-search-toolbar__links a {
+  padding: 6px 12px;
+  border-radius: 99px;
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  border: 1px solid var(--user-border-light);
+  background: var(--user-surface);
+  color: var(--user-text-secondary);
+  font-family: var(--user-font-body);
+}
+
+.user-code-search-toolbar__links a:hover {
+  background: var(--user-accent-soft);
+  color: var(--user-accent);
 }
 
 .user-code-search-tabs {
   display: flex;
   gap: 8px;
-  margin: 20px 0 12px;
 }
 
 .user-code-search-tabs button {
   border: 1px solid var(--user-border-light);
   background: var(--user-surface);
-  border-radius: 8px;
-  padding: 8px 14px;
+  border-radius: 99px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
+  font-family: var(--user-font-body);
+  color: var(--user-text-secondary);
 }
 
 .user-code-search-tabs button.active {
   border-color: var(--user-accent);
   color: var(--user-accent);
   background: var(--user-accent-light);
-}
-
-.user-code-search-input {
-  margin-bottom: 16px;
-}
-
-.user-code-search-results {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.user-code-search-empty {
-  color: var(--user-text-muted);
-}
-
-.user-code-search-status {
-  font-size: 13px;
-  color: var(--user-text-muted);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 12px;
 }
 
 .user-status-line {
@@ -854,9 +845,9 @@ body {
 
 /* 知识文档参考链接 */
 .user-code-search-refs {
-  margin-top: 24px;
-  padding-top: 16px;
-  border-top: 1px solid var(--user-border, #e5e7eb);
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--user-border-light);
 }
 
 .user-code-search-refs__title {
@@ -1149,9 +1140,15 @@ body {
 
   .user-home-view,
   .user-chat-messages,
-  .user-chat-input-area {
+  .user-chat-input-area,
+  .user-chat-toolbar {
     padding-left: 20px;
     padding-right: 20px;
+  }
+
+  .user-code-search-toolbar {
+    flex-wrap: wrap;
+    gap: 8px;
   }
 
   .user-sidebar {

@@ -40,11 +40,12 @@ func NewSymbolResolveService(
 }
 
 type SymbolResolveInput struct {
-	Query      string   `json:"query"`
-	ClassName  string   `json:"className,omitempty"`
-	MethodName string   `json:"methodName,omitempty"`
-	RepoIDs    []string `json:"repoIds,omitempty"`
-	Limit      int      `json:"limit,omitempty"`
+	Query        string   `json:"query"`
+	ClassName    string   `json:"className,omitempty"`
+	MethodName   string   `json:"methodName,omitempty"`
+	RepoIDs      []string `json:"repoIds,omitempty"`
+	Limit        int      `json:"limit,omitempty"`
+	TopicKeywords []string `json:"topicKeywords,omitempty"` // 中文主题词（如 "llm编排"）
 }
 
 type CodeLocation struct {
@@ -164,8 +165,8 @@ func (s *SymbolResolveService) ResolveStream(ctx context.Context, input SymbolRe
 			searchText = className + " " + searchText
 		}
 
-		// 构建多路检索 query：原始查询 + 关键词提取变体
-		searchVariants := buildSearchVariants(query, className, methodName)
+		// 构建多路检索 query：原始查询 + 关键词提取变体 + 主题关键词
+		searchVariants := buildSearchVariants(query, className, methodName, input.TopicKeywords)
 		log.Printf("[ResolveStream] search variants: %v", searchVariants)
 
 		totalHits := 0
@@ -515,7 +516,7 @@ func isCommonQuestionWord(w string) bool {
 }
 
 // buildSearchVariants 构建多路检索查询变体
-func buildSearchVariants(query, className, methodName string) []string {
+func buildSearchVariants(query, className, methodName string, topicKeywords []string) []string {
 	seen := map[string]bool{}
 	var variants []string
 
@@ -559,6 +560,33 @@ func buildSearchVariants(query, className, methodName string) []string {
 		}
 		if len(englishOnly) > 0 {
 			add(strings.Join(englishOnly, " "))
+		}
+	}
+
+	// 4. 利用主题关键词构建增强变体（如 "llm编排" → "llm 编排"、"llm workflow orchestration"）
+	if len(topicKeywords) > 0 {
+		// 主题词直接用空格拼接
+		topicQuery := strings.Join(topicKeywords, " ")
+		if className != "" {
+			topicQuery = className + " " + topicQuery
+		}
+		if methodName != "" {
+			topicQuery = methodName + " " + topicQuery
+		}
+		add(topicQuery)
+
+		// 提取主题词中的英文部分，单独作为变体
+		var topicEnglish []string
+		for _, tk := range topicKeywords {
+			for _, m := range _englishEntityRe.FindAllString(tk, -1) {
+				m = strings.TrimSpace(m)
+				if len(m) >= 2 {
+					topicEnglish = append(topicEnglish, m)
+				}
+			}
+		}
+		if len(topicEnglish) > 0 {
+			add(strings.Join(topicEnglish, " "))
 		}
 	}
 

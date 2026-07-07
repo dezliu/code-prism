@@ -41,6 +41,9 @@ async def symbol_resolve_node(state: QaWorkflowState, deps: WorkflowDeps) -> Rou
         body["methodName"] = parsed.method_name
     if repo_ids:
         body["repoIds"] = repo_ids
+    # 传递主题关键词，帮助 Go 端增强语义搜索
+    if parsed.topic_keywords:
+        body["topicKeywords"] = parsed.topic_keywords
 
     with trace_workflow_node(
         "symbol_resolve",
@@ -81,22 +84,31 @@ async def symbol_resolve_node(state: QaWorkflowState, deps: WorkflowDeps) -> Rou
             )
 
         if not locations:
-            # 如果是自然语言查询且无结果，尝试降级到语义搜索
+            # 自然语言查询（含功能描述类）且无结果：先走 RAG 检索获取知识上下文，
+            # 再让 LLM 基于上下文回答，而不是直接返回"未找到"
             if not is_exact_symbol_query and parsed.is_location_intent:
                 state.low_confidence_retrieval = True
+                topic_hint = parsed.topic_keywords[0] if parsed.topic_keywords else query
                 state.clarify_question = (
-                    f"正在为您搜索与「{query}」相关的代码位置...\n"
+                    f"正在为您搜索与「{topic_hint}」相关的代码位置...\n"
                     f"建议：提供更具体的类名或方法名可获得更精确的结果（如 OrderService.rollback）"
                 )
-                # 仍然返回 generate_answer，让 LLM 基于语义搜索结果生成回答
-                return "generate_answer"
-            else:
+                # 走 RAG 检索获取知识文档上下文，再回答
+                return "rag_prepare"
+            elif is_exact_symbol_query:
                 # 精确查询无结果，要求用户补充信息
                 state.low_confidence_retrieval = True
                 state.clarify_question = (
                     "未找到精确匹配的代码位置。请补充：目标仓库/服务名、类名或方法名（如 OrderService.rollback）。"
                 )
                 return "clarify"
+            else:
+                # 其他情况也先走 RAG 检索，让 LLM 基于知识库尝试回答
+                state.low_confidence_retrieval = True
+                state.clarify_question = (
+                    f"未找到与「{query}」精确匹配的代码符号，正在尝试通过知识库为您解答..."
+                )
+                return "rag_prepare"
 
         if len(locations) > 3 and not repo_ids:
             state.clarify_question = (
