@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import uuid
 from collections.abc import AsyncIterator, Callable
 from typing import Any
@@ -110,6 +112,9 @@ async def _execute_workflow(state: QaWorkflowState, deps: WorkflowDeps) -> None:
         break
 
 
+logger = logging.getLogger(__name__)
+
+
 async def run_qa_workflow(
     message: str,
     *,
@@ -118,11 +123,18 @@ async def run_qa_workflow(
     is_cancelled: Callable[[], bool] | None = None,
     trace_id: str | None = None,
 ) -> AsyncIterator[tuple[str, dict[str, Any] | None]]:
-    """Execute QA workflow and yield SSE-compatible events."""
-    events: list[tuple[str, dict[str, Any]]] = []
+    """Execute QA workflow and yield SSE-compatible events in real time.
+
+    The workflow runs inside a background ``asyncio.Task``.  Every node calls
+    ``deps.emit()`` which pushes events into an ``asyncio.Queue``.  This
+    generator drains the queue so that downstream SSE consumers (FastAPI →
+    API service → browser) receive events as soon as they are produced —
+    enabling true token-level streaming.
+    """
+    queue: asyncio.Queue[tuple[str, dict[str, Any]] | None] = asyncio.Queue()
 
     def emit(event: str, data: dict[str, Any]) -> None:
-        events.append((event, data))
+        queue.put_nowait((event, data))
 
     state = QaWorkflowState(
         message=message,
@@ -136,15 +148,30 @@ async def run_qa_workflow(
         trace_id=trace_id,
     )
 
-    await _execute_workflow(state, deps)
+    async def _run() -> None:
+        try:
+            await _execute_workflow(state, deps)
+            queue.put_nowait(("done", {
+                "messageId": state.message_id or str(uuid.uuid4()),
+                "interrupted": state.interrupted,
+                "anchor": state.anchor.to_dict() if state.anchor else None,
+                "ragScore": round(state.rag_score, 3),
+                "workflowNode": state.workflow_node or state.current_node,
+            }))
+        except Exception:
+            logger.exception("QA workflow failed: %s", message)
+            queue.put_nowait(("error", {
+                "code": "WORKFLOW_ERROR",
+                "message": "内部处理异常，请稍后重试",
+            }))
+        finally:
+            # Sentinel signals the consumer that no more events are coming.
+            queue.put_nowait(None)
 
-    for event_name, data in events:
-        yield event_name, data
+    asyncio.create_task(_run())
 
-    yield "done", {
-        "messageId": state.message_id or str(uuid.uuid4()),
-        "interrupted": state.interrupted,
-        "anchor": state.anchor.to_dict() if state.anchor else None,
-        "ragScore": round(state.rag_score, 3),
-        "workflowNode": state.workflow_node or state.current_node,
-    }
+    while True:
+        item = await queue.get()
+        if item is None:
+            break
+        yield item
